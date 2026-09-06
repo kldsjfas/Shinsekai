@@ -61,6 +61,7 @@ def story_state_view(
         "currentNodeId": node.id,
         "currentNodeTitle": node.title,
         "currentNodeType": node.type,
+        "background": node.background,
         "nodeTurnCount": state.node_turn_count,
         "maxRounds": node.max_rounds,
         "activeCast": [

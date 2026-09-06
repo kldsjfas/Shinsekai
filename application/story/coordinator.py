@@ -190,7 +190,35 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
     media_patch = getattr(state, "story_media_patch", None)
     if isinstance(media_patch, Mapping):
         patch.update(dict(media_patch))
+    patch.update(_current_node_background_patch(state, session))
     return patch
+
+
+def _current_node_background_patch(state: Any, session: StorySession) -> dict[str, Any]:
+    node = session.runtime.program.nodes_by_id[
+        session.active_branch.state.current_node_id
+    ]
+    background_name = str(node.background or "").strip()
+    if not background_name:
+        return {}
+    config_manager = getattr(state, "config_manager", None)
+    getter = getattr(config_manager, "get_background_by_name", None)
+    record = getter(background_name) if callable(getter) else None
+    sprites = getattr(record, "sprites", None) if record is not None else None
+    background_path = ""
+    if sprites:
+        sprite = sprites[0]
+        path = str(sprite.path if hasattr(sprite, "path") else sprite.get("path", ""))
+        chat_stream = getattr(state, "chat_stream", None)
+        media_url = getattr(chat_stream, "media_url", None)
+        background_path = str(media_url(path) or path) if callable(media_url) else path
+    chat_session = dict(getattr(state, "chat_session", {}) or {})
+    chat_session["backgroundName"] = background_name
+    state.chat_session = chat_session
+    return {
+        "backgroundName": background_name,
+        "backgroundPath": background_path,
+    }
 
 
 def clear_story_session(state: Any) -> None:
@@ -217,7 +245,9 @@ def release_unbound_story_session(state: Any, history_path: str | Path) -> None:
     if not owner:
         return
     try:
-        if Path(owner).resolve(strict=False) != Path(history_path).resolve(strict=False):
+        if Path(owner).resolve(strict=False) != Path(history_path).resolve(
+            strict=False
+        ):
             clear_story_session(state)
     except OSError:
         clear_story_session(state)

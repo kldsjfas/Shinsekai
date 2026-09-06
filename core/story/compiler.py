@@ -288,6 +288,7 @@ class StoryCompiler:
                 ),
                 exposed_context=getattr(node, "exposed_context", {}),
                 instruction=getattr(node, "instruction", ""),
+                background=getattr(node, "background", None),
                 max_rounds=getattr(node, "max_rounds", None),
                 transitions=getattr(node, "transitions", ()),
                 default_to=getattr(node, "default_to", None),
@@ -330,6 +331,7 @@ class StoryCompiler:
                 story_version=project.version,
                 source_hash=source_hash,
                 start_node_id=project.narrative_graph.start_node_id,
+                backgrounds=project.metadata.backgrounds,
                 variables=project.variables,
                 semantic_signals=project.semantic_signals,
                 character_registry=project.character_registry,
@@ -368,7 +370,13 @@ class StoryCompiler:
         for node_index, node in enumerate(project.narrative_graph.nodes):
             node_path = f"$.narrativeGraph.nodes[{node_index}]"
             if isinstance(node, StoryNode):
-                self._validate_simple_node(node, nodes, diagnostics, node_path)
+                self._validate_simple_node(
+                    node,
+                    nodes,
+                    project.metadata.backgrounds,
+                    diagnostics,
+                    node_path,
+                )
                 continue
             self._validate_condition(
                 node.enter_when,
@@ -452,6 +460,7 @@ class StoryCompiler:
         self,
         node: StoryNode,
         nodes: Mapping[str, Any],
+        backgrounds: tuple[str, ...],
         diagnostics: list[StoryDiagnostic],
         path: str,
     ) -> None:
@@ -464,6 +473,20 @@ class StoryCompiler:
                 "narrative.missing_instruction",
                 "interactive nodes require an instruction",
                 f"{path}.instruction",
+            )
+        if backgrounds and node.background is None:
+            self._error(
+                diagnostics,
+                "narrative.missing_background",
+                "simple nodes require a background when metadata.backgrounds is not empty",
+                f"{path}.background",
+            )
+        elif node.background is not None and node.background not in backgrounds:
+            self._error(
+                diagnostics,
+                "narrative.unknown_background",
+                f"background {node.background!r} is not in metadata.backgrounds",
+                f"{path}.background",
             )
         if node.type == StoryNodeType.LIMITED_TURN.value:
             if node.max_rounds is None:

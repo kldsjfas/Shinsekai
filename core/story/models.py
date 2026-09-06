@@ -302,6 +302,7 @@ class StoryNode:
     title: str
     type: StoryNodeType
     instruction: str = ""
+    background: str | None = None
     max_rounds: int | None = None
     transitions: tuple[StoryTransition, ...] = ()
     default_to: str | None = None
@@ -362,9 +363,11 @@ class StoryMetadata:
     language: str = "zh-CN"
     estimated_minutes: int | None = None
     generation_mode: str = "manual"
+    backgrounds: tuple[str, ...] = ()
     resource_bindings: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "backgrounds", tuple(self.backgrounds))
         object.__setattr__(
             self, "resource_bindings", FrozenDict(self.resource_bindings)
         )
@@ -422,6 +425,7 @@ class CompiledStoryNode:
     cast_policy: CastPolicy
     exposed_context: Mapping[str, Any] = field(default_factory=dict)
     instruction: str = ""
+    background: str | None = None
     max_rounds: int | None = None
     transitions: tuple[StoryTransition, ...] = ()
     default_to: str | None = None
@@ -437,6 +441,7 @@ class StoryProgram:
     story_version: int
     source_hash: str
     start_node_id: str
+    backgrounds: tuple[str, ...]
     variables: tuple[StoryVariableDefinition, ...]
     semantic_signals: tuple[SemanticSignalDefinition, ...]
     character_registry: CharacterRegistry
@@ -445,6 +450,7 @@ class StoryProgram:
     source_map: Mapping[str, str]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "backgrounds", tuple(self.backgrounds))
         object.__setattr__(self, "source_map", FrozenDict(self.source_map))
 
     @property

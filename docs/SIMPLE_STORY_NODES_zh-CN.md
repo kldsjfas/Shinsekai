@@ -15,12 +15,18 @@
 ## YAML 示例
 
 ```yaml
+metadata:
+  backgrounds:
+    - 旧校舍门口
+    - 旧校舍大厅
+
 startNodeId: school-gate
 
 nodes:
   - id: school-gate
     title: 旧校舍门口
     type: limited_turn_node
+    background: 旧校舍门口
     instruction: |
       绫邀请玩家调查旧校舍。表现她的紧张，并透露钥匙的来历。
     maxRounds: 3
@@ -34,6 +40,7 @@ nodes:
   - id: school-lobby
     title: 旧校舍大厅
     type: free_chat_node
+    background: 旧校舍大厅
     instruction: |
       玩家可以和绫自由调查、交谈。不要替玩家作出决定。
     transitions:
@@ -43,6 +50,7 @@ nodes:
   - id: leave-school
     title: 离开旧校舍
     type: ending_node
+    background: 旧校舍门口
 ```
 
 `when` 是提供给 LLM 的自然语言，不是条件表达式。运行时不会解释它，只校验
@@ -77,16 +85,20 @@ LLM 返回的目标是否出现在当前节点的 `transitions` 中。
 
 ## AI 生成流程
 
-新剧情只经过四个创作阶段：
+新剧情只经过三个创作阶段：
 
 1. `foundation`：标题、前提、世界规则、事实和秘密。
 2. `characters`：提供整个故事可使用的人物列表，不指定任何节点的出场人物。
-3. `narrative`：生成简单节点及其自然语言跳转条件。
-4. `resources`：从给定资源目录中绑定背景、音乐等资源。
+3. `narrative`：生成简单节点及其自然语言跳转条件，并从提供的背景列表中为
+   每个节点选择一个地点。
 
 生成器不再让 LLM 创建变量、语义信号或逻辑图。为了继续使用现有故事文件格式，
 输出文件中的 `variables`、`semanticSignals` 和 `logicGraph` 由程序写成空结构。
 `initialCast` 和 `maxActive` 也由人物列表自动派生，而不是由 LLM 决定。
+
+背景列表只是生成输入。生成器不会预先绑定场景资源，也不会由运行时再次请求
+LLM 选择地点；`narrative` 阶段直接把选中的背景名写进节点。切换节点时，运行时
+读取该字段并显示对应背景。
 
 所有简单节点共享这份故事级人物列表。节点中不允许出现 `castPolicy` 或人物 ID
 列表，场景 LLM 根据当前节点的剧情要求决定本轮由谁发言。

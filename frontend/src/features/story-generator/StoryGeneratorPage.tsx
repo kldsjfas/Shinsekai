@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
+import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import {
   cancelStoryGeneration,
   regenerateStoryGeneration,
@@ -14,7 +16,6 @@ const stages: { id: StoryGenerationStage; label: string }[] = [
   { id: "foundation", label: "故事基础" },
   { id: "characters", label: "人物列表" },
   { id: "narrative", label: "剧情节点" },
-  { id: "resources", label: "资源绑定" },
 ];
 
 function taskFromUpdate(update: TaskSnapshot<StoryGenerationTask>) {
@@ -22,12 +23,17 @@ function taskFromUpdate(update: TaskSnapshot<StoryGenerationTask>) {
 }
 
 export function StoryGeneratorPage() {
+  const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const [synopsis, setSynopsis] = useState("");
   const [task, setTask] = useState<StoryGenerationTask | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [regenerationStage, setRegenerationStage] = useState<StoryGenerationStage>("narrative");
   const completed = useMemo(() => new Set(task?.completedStages ?? []), [task?.completedStages]);
+  const availableBackgrounds = useMemo(
+    () => (backgroundsQuery.data ?? []).filter((item) => item.sprites.length > 0).map((item) => item.name),
+    [backgroundsQuery.data],
+  );
 
   const track = (update: TaskSnapshot<StoryGenerationTask>) => {
     const next = taskFromUpdate(update);
@@ -49,7 +55,11 @@ export function StoryGeneratorPage() {
   const start = () =>
     run(() =>
       startStoryGeneration(
-        { synopsis, options: { controlMode: "deterministic", targetLength: "short" } },
+        {
+          synopsis,
+          options: { controlMode: "deterministic", targetLength: "short" },
+          resourceCatalog: { backgrounds: availableBackgrounds },
+        },
         { onTaskUpdate: track },
       ),
     );
@@ -87,7 +97,7 @@ export function StoryGeneratorPage() {
           value={synopsis}
         />
         <div className="story-generator-actions">
-          <button disabled={busy || !synopsis.trim()} onClick={start} type="button">
+          <button disabled={busy || !synopsis.trim() || backgroundsQuery.isLoading} onClick={start} type="button">
             {busy ? "生成中…" : "开始生成"}
           </button>
           {task?.status === "failed" || task?.status === "cancelled" ? (
@@ -182,7 +192,7 @@ export function StoryGeneratorPage() {
                   ) : null}
                 </>
               ) : (
-                <p>剧情节点与资源绑定完成后运行。</p>
+                <p>剧情节点完成后运行。</p>
               )}
             </article>
           </section>

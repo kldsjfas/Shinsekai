@@ -918,6 +918,7 @@ export type ChatOption = string | ChatStoryOption;
 
 export interface ChatStoryState {
   activeCast: Array<{ id: string; roles: string[] }>;
+  background?: string | null;
   castRevision: number;
   currentNodeId: string;
   currentNodeTitle: string;
@@ -1217,11 +1218,7 @@ export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
 
-export type StoryGenerationStage =
-  | "foundation"
-  | "characters"
-  | "narrative"
-  | "resources";
+export type StoryGenerationStage = "foundation" | "characters" | "narrative";
 
 export interface StoryGenerationValidationIssue {
   code: string;

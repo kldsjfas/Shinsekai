@@ -11,7 +11,6 @@ import pytest
 import yaml
 
 from application.runtime.tasks import _create_task, _get_task
-from application.story.coordinator import apply_story_resource_bindings
 from application.story.generation import (
     ConfigStoryAuthorModel,
     StoryDraftValidator,
@@ -98,7 +97,6 @@ def stage_artifacts(*, two_endings: bool = False) -> dict[str, dict[str, Any]]:
         },
         "characters": {"characters": characters["characters"]},
         "narrative": narrative,
-        "resources": {"bindings": {}, "unresolved": []},
     }
 
 
@@ -113,6 +111,7 @@ class ScriptedModel:
         self.fail_once_at = fail_once_at
         self.failed = False
         self.calls: list[str] = []
+        self.requests: list[Mapping[str, Any]] = []
 
     def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         operation = str(request["operation"])
@@ -120,6 +119,7 @@ class ScriptedModel:
             raise AssertionError("valid fixture must not enter repair")
         stage = str(request["stage"])
         self.calls.append(stage)
+        self.requests.append(request)
         if stage == self.fail_once_at and not self.failed:
             self.failed = True
             raise RuntimeError("transient model failure")
@@ -172,7 +172,7 @@ def test_pipeline_persists_intermediate_artifacts_and_compiled_draft(
     assert result["assumptions"] == ["The player wants a mystery"]
     assert result["validation"]["valid"] is True
     assert result["validation"]["endingCoverage"] == 1
-    assert result["cost"]["requests"] == 4
+    assert result["cost"]["requests"] == 3
     assert Path(result["draftPath"]).is_file()
     assert repository.load_artifact("story-task", StoryGenerationStage.FOUNDATION)[
         "secrets"
@@ -276,6 +276,33 @@ def test_bounded_patch_rejects_escape_and_preserves_identity() -> None:
             base_version=1,
         )
 
+    with pytest.raises(StoryGenerationError, match="derived path"):
+        applier.apply(
+            source,
+            {
+                "baseVersion": 1,
+                "operations": [{"op": "replace", "path": "/metadata", "value": {}}],
+            },
+            base_version=1,
+        )
+
+    source["metadata"]["backgrounds"] = ["school-yard"]
+    with pytest.raises(StoryGenerationError, match="derived path"):
+        applier.apply(
+            source,
+            {
+                "baseVersion": 1,
+                "operations": [
+                    {
+                        "op": "replace",
+                        "path": "/metadata/backgrounds",
+                        "value": ["unknown-background"],
+                    }
+                ],
+            },
+            base_version=1,
+        )
+
 
 def test_directed_repair_loop_applies_only_a_bounded_patch(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
@@ -292,23 +319,24 @@ def test_directed_repair_loop_applies_only_a_bounded_patch(tmp_path: Path) -> No
     assert result["repairAttempts"] == 1
     assert result["validation"]["valid"] is True
     assert model.calls[-1] == "repair"
-    assert result["cost"]["requests"] == 5
+    assert result["cost"]["requests"] == 4
 
 
-def test_resource_bindings_must_use_supplied_catalog_ids(tmp_path: Path) -> None:
+def test_node_backgrounds_must_use_supplied_names(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
-    artifacts["resources"]["bindings"] = {"openingBackground": "unknown-background"}
+    for node in artifacts["narrative"]["nodes"]:
+        node["background"] = "unknown-background"
     model = ScriptedModel(artifacts)
     service, _ = service_at(tmp_path, model)
     task = service.create(
-        "Bind only supplied resources.",
+        "Choose only supplied backgrounds.",
         task_id="resource-task",
         resource_catalog={"backgrounds": [{"id": "known-background"}]},
     )
 
-    with pytest.raises(StoryGenerationError, match="not in the supplied catalog"):
+    with pytest.raises(StoryGenerationError, match="selected unknown background"):
         service.run(task["id"])
-    assert service.get(task["id"])["currentStage"] == "resources"
+    assert service.get(task["id"])["currentStage"] == "narrative"
 
 
 def test_character_stage_is_only_a_story_wide_list(tmp_path: Path) -> None:
@@ -363,7 +391,7 @@ def test_fixed_eval_reports_pass_rate_coverage_and_cost(tmp_path: Path) -> None:
 
     assert report["structuralPassRate"] == 1
     assert report["meanEndingCoverage"] == 1
-    assert report["generationCost"]["requests"] == 4
+    assert report["generationCost"]["requests"] == 3
 
 
 def test_flag_off_prevents_task_directory_creation(tmp_path: Path) -> None:
@@ -473,51 +501,30 @@ def test_applied_repair_is_checkpointed_before_attempt_count(tmp_path: Path) -> 
     )
 
 
-def test_applied_repair_survives_downstream_regeneration(tmp_path: Path) -> None:
+def test_available_backgrounds_are_retained_without_bindings(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
-    artifacts["narrative"]["nodes"].append(
-        {"id": "orphan-ending", "title": "Orphan", "type": "ending_node"}
-    )
-    model = RepairingModel(artifacts)
-    service, repository = service_at(tmp_path, model)
-    task = service.create("Keep repaired narrative.", task_id="repair-keep")
-    result = service.run(task["id"])
-    assert result["status"] == "succeeded"
-
-    repaired = repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)
-    assert repaired["nodes"][0]["transitions"][-1]["to"] == "orphan-ending"
-    reset = service.regenerate_from(task["id"], StoryGenerationStage.RESOURCES)
-    assert reset["status"] == "queued"
-    kept = repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)
-    assert kept["nodes"][0]["transitions"][-1]["to"] == "orphan-ending"
-
-
-def test_resource_bindings_are_retained_after_parse(tmp_path: Path) -> None:
-    artifacts = stage_artifacts()
-    artifacts["resources"]["bindings"] = {"openingBackground": "school-yard"}
+    for node in artifacts["narrative"]["nodes"]:
+        node["background"] = "school-yard"
     model = ScriptedModel(artifacts)
     service, _ = service_at(tmp_path, model)
     task = service.create(
-        "Bind opening background.",
+        "Choose a background while generating nodes.",
         task_id="binding-task",
-        resource_catalog={"backgrounds": [{"id": "school-yard"}]},
+        resource_catalog={"backgrounds": [{"name": "school-yard"}]},
     )
     result = service.run(task["id"])
     source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
     project = parse_story_project(source)
-    assert project.metadata.resource_bindings["openingBackground"] == "school-yard"
-
-    state = SimpleNamespace(
-        chat_session={},
-        config_manager=SimpleNamespace(
-            get_background_by_name=lambda name: SimpleNamespace(
-                sprites=[SimpleNamespace(path=f"media/{name}.png")]
-            )
-        ),
-    )
-    patch = apply_story_resource_bindings(state, project.metadata.resource_bindings)
-    assert state.chat_session["backgroundName"] == "school-yard"
-    assert patch["backgroundPath"] == "media/school-yard.png"
+    assert project.metadata.backgrounds == ("school-yard",)
+    assert project.metadata.resource_bindings == {}
+    assert {node.background for node in project.narrative_graph.nodes} == {
+        "school-yard"
+    }
+    assert [request["resourceCatalog"] for request in model.requests] == [
+        {},
+        {},
+        {"backgrounds": ["school-yard"]},
+    ]
 
 
 def test_background_failure_writes_generation_task_snapshot(tmp_path: Path) -> None:

@@ -69,6 +69,37 @@ def test_simple_node_schema_compiles_natural_language_routes() -> None:
     assert opening.transitions[0].to_node_id == "lobby"
 
 
+def test_simple_nodes_retain_generated_backgrounds() -> None:
+    source = simple_story_source()
+    source["metadata"]["backgrounds"] = ["旧校舍门口", "旧校舍大厅"]
+    source["narrativeGraph"]["nodes"][0]["background"] = "旧校舍门口"
+    source["narrativeGraph"]["nodes"][1]["background"] = "旧校舍大厅"
+    source["narrativeGraph"]["nodes"][2]["background"] = "旧校舍门口"
+
+    program = StoryCompiler().compile(parse_story_project(source))
+
+    assert program.backgrounds == ("旧校舍门口", "旧校舍大厅")
+    assert program.nodes_by_id["opening"].background == "旧校舍门口"
+    assert program.nodes_by_id["lobby"].background == "旧校舍大厅"
+
+
+def test_compiler_rejects_background_outside_story_catalog() -> None:
+    source = simple_story_source()
+    source["metadata"]["backgrounds"] = ["旧校舍门口"]
+    source["narrativeGraph"]["nodes"][0]["background"] = "不存在的地点"
+
+    with pytest.raises(StoryCompileError, match="metadata.backgrounds"):
+        StoryCompiler().compile(parse_story_project(source))
+
+
+def test_compiler_requires_background_when_catalog_is_present() -> None:
+    source = simple_story_source()
+    source["metadata"]["backgrounds"] = ["旧校舍门口"]
+
+    with pytest.raises(StoryCompileError, match="require a background"):
+        StoryCompiler().compile(parse_story_project(source))
+
+
 def test_limited_node_uses_default_target_at_round_limit() -> None:
     runtime = StoryRuntime(_program())
     started = runtime.start(StartStory("start"))

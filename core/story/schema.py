@@ -750,6 +750,7 @@ def _parse_simple_node(
             default=StoryNodeType.FREE_CHAT,
         ),
         instruction=parser.string(item.get("instruction"), f"{path}.instruction"),
+        background=parser.string(item.get("background"), f"{path}.background") or None,
         max_rounds=(
             parser.integer(
                 item.get("maxRounds"),
@@ -1002,6 +1003,10 @@ def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
                 metadata_source.get("generationMode"),
                 "$.metadata.generationMode",
                 default="manual",
+            ),
+            backgrounds=parser.strings(
+                metadata_source.get("backgrounds"),
+                "$.metadata.backgrounds",
             ),
             resource_bindings=_parse_resource_bindings(
                 parser,

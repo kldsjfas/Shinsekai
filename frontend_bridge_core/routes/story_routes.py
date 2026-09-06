@@ -4,6 +4,7 @@ from application.chat.runtime_process import _chat_snapshot
 from application.story.coordinator import (
     publish_story_transition,
     start_or_recover_story_session,
+    story_snapshot_patch,
 )
 from application.story.generation import (
     StoryGenerationStage,
@@ -37,7 +38,7 @@ def _start_story(request: ApiRequest) -> JsonResponse:
         story_path,
         command_id=str(request.body.get("commandId") or new_log_id()),
     )
-    patch = session.chat_snapshot()
+    patch = story_snapshot_patch(request.state)
     publish_story_transition(request.state, patch)
     return JsonResponse(_chat_snapshot(request.state, "idle", extra=patch))
 
