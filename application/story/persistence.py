@@ -109,6 +109,7 @@ def story_state_to_payload(state: StoryState) -> dict[str, Any]:
         "programSourceHash": state.program_source_hash,
         "revision": state.revision,
         "currentNodeId": state.current_node_id,
+        "nodeTurnCount": state.node_turn_count,
         "variables": _json_value(state.variables),
         "completedNodeIds": sorted(state.completed_node_ids),
         "failedNodeIds": sorted(state.failed_node_ids),
@@ -204,6 +205,7 @@ def story_state_from_payload(
         program_source_hash=program.source_hash,
         revision=int(raw.get("revision") or 0),
         current_node_id=str(raw.get("currentNodeId") or ""),
+        node_turn_count=int(raw.get("nodeTurnCount") or 0),
         variables=freeze_mapping(variables),
         completed_node_ids=frozenset(
             str(item)
@@ -512,7 +514,9 @@ def _persisted_variable_value(variable_type: Any, value: Any) -> Any:
 
 
 def _restore_event_variable_value(value: Any) -> Any:
-    if isinstance(value, (list, tuple)) and not isinstance(value, (str, bytes, bytearray)):
+    if isinstance(value, (list, tuple)) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
         return frozenset(str(item) for item in value)
     return freeze_value(value)
 

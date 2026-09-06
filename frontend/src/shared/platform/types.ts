@@ -921,9 +921,12 @@ export interface ChatStoryState {
   castRevision: number;
   currentNodeId: string;
   currentNodeTitle: string;
+  currentNodeType?: string;
   ending?: { id: string; title: string } | null;
   lastEvent?: { payload: Record<string, unknown>; revision?: number; type: string };
   objectives: unknown[];
+  maxRounds?: number | null;
+  nodeTurnCount?: number;
   options: ChatStoryOption[];
   revision: number;
   storyId: string;
