@@ -730,8 +730,8 @@ def _parse_simple_node(
     item: Mapping[str, Any],
     path: str,
 ) -> StoryNode:
-    for legacy_field in ("choices", "freeformIntents"):
-        if item.get(legacy_field):
+    for legacy_field in ("choices", "freeformIntents", "castPolicy", "characters"):
+        if legacy_field in item:
             parser.error(
                 "schema.simple_node_field",
                 f"{legacy_field} is not valid for simple story nodes",

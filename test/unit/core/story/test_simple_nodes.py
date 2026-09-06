@@ -187,3 +187,11 @@ def test_simple_nodes_reject_legacy_choices() -> None:
 
     with pytest.raises(StoryValidationError, match="not valid for simple story nodes"):
         parse_story_project(source)
+
+
+def test_simple_nodes_reject_per_node_character_assignment() -> None:
+    source = simple_story_source()
+    source["narrativeGraph"]["nodes"][0]["castPolicy"] = {}
+
+    with pytest.raises(StoryValidationError, match="castPolicy is not valid"):
+        parse_story_project(source)

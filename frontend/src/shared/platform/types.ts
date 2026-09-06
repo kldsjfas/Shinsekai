@@ -1218,12 +1218,9 @@ export interface TaskProgressOptions<TResult = unknown> {
 }
 
 export type StoryGenerationStage =
-  | "requirements"
-  | "bible"
+  | "foundation"
   | "characters"
-  | "state"
   | "narrative"
-  | "logic"
   | "resources";
 
 export interface StoryGenerationValidationIssue {

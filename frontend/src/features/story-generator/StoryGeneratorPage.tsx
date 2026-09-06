@@ -11,12 +11,9 @@ import type { TaskSnapshot } from "../../shared/platform/types";
 import "./StoryGeneratorPage.css";
 
 const stages: { id: StoryGenerationStage; label: string }[] = [
-  { id: "requirements", label: "需求与假设" },
-  { id: "bible", label: "故事圣经" },
-  { id: "characters", label: "人物职责" },
-  { id: "state", label: "状态与信号" },
-  { id: "narrative", label: "剧情图" },
-  { id: "logic", label: "逻辑图" },
+  { id: "foundation", label: "故事基础" },
+  { id: "characters", label: "人物列表" },
+  { id: "narrative", label: "剧情节点" },
   { id: "resources", label: "资源绑定" },
 ];
 
@@ -138,7 +135,7 @@ export function StoryGeneratorPage() {
 
           <section className="story-generator-grid">
             <article className="story-generator-card">
-              <h2>生成假设</h2>
+              <h2>创作假设</h2>
               {task.assumptions.length ? (
                 <ul>
                   {task.assumptions.map((item) => (
@@ -146,7 +143,7 @@ export function StoryGeneratorPage() {
                   ))}
                 </ul>
               ) : (
-                <p>需求阶段完成后显示。</p>
+                <p>故事基础完成后显示。</p>
               )}
             </article>
             <article className="story-generator-card">
@@ -185,7 +182,7 @@ export function StoryGeneratorPage() {
                   ) : null}
                 </>
               ) : (
-                <p>剧情图、逻辑图与资源绑定完成后运行。</p>
+                <p>剧情节点与资源绑定完成后运行。</p>
               )}
             </article>
           </section>

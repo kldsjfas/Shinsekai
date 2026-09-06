@@ -49,12 +49,9 @@ AUTHOR_COMPILER_TEMPLATE = (
 
 
 class StoryGenerationStage(str, Enum):
-    REQUIREMENTS = "requirements"
-    BIBLE = "bible"
+    FOUNDATION = "foundation"
     CHARACTERS = "characters"
-    STATE = "state"
     NARRATIVE = "narrative"
-    LOGIC = "logic"
     RESOURCES = "resources"
 
 
@@ -367,12 +364,13 @@ class StoryPatchApplier:
     _TOP_LEVEL = frozenset(
         {
             "metadata",
-            "variables",
-            "semanticSignals",
             "cast",
             "narrativeGraph",
-            "logicGraph",
         }
+    )
+    _IMMUTABLE_PREFIXES = (
+        ("cast", "defaults"),
+        ("cast", "initialCast"),
     )
 
     def apply(
@@ -429,6 +427,14 @@ class StoryPatchApplier:
                 "generation.patch_path_forbidden",
                 f"operation {index} cannot modify {raw_path!r}",
             )
+        if any(
+            tuple(tokens[: len(prefix)]) == prefix
+            for prefix in self._IMMUTABLE_PREFIXES
+        ):
+            raise StoryGenerationError(
+                "generation.patch_path_forbidden",
+                f"operation {index} cannot modify derived path {raw_path!r}",
+            )
         if any(item in {"", ".", ".."} for item in tokens):
             raise StoryGenerationError(
                 "generation.patch_path_forbidden",
@@ -468,8 +474,6 @@ class StoryPatchApplier:
                 "characterId",
                 source.get("cast", {}).get("characters"),
             ),
-            "replace-variable": ("variableId", source.get("variables")),
-            "replace-rule-node": ("nodeId", source.get("logicGraph", {}).get("nodes")),
         }
         op = str(operation.get("op") or "")
         if op not in specs:
@@ -509,7 +513,7 @@ class StoryDraftValidator:
         self,
         source: Mapping[str, Any],
         *,
-        story_bible: Mapping[str, Any] | None = None,
+        foundation: Mapping[str, Any] | None = None,
     ) -> GenerationValidationReport:
         issues: list[GenerationValidationIssue] = []
         source_hash = hashlib.sha256(canonical_json(source).encode("utf-8")).hexdigest()
@@ -598,7 +602,7 @@ class StoryDraftValidator:
                     f"/narrativeGraph/nodes/{node_id}/castPolicy",
                 )
             )
-        issues.extend(_secret_isolation_issues(source, story_bible or {}))
+        issues.extend(_secret_isolation_issues(source, foundation or {}))
         if simulation.truncated:
             issues.append(
                 GenerationValidationIssue(
@@ -673,7 +677,7 @@ class StoryGenerationService:
             "options": _json_copy(options or {}),
             "resourceCatalog": _json_copy(resource_catalog or {}),
             "status": StoryGenerationStatus.QUEUED.value,
-            "currentStage": StoryGenerationStage.REQUIREMENTS.value,
+            "currentStage": StoryGenerationStage.FOUNDATION.value,
             "completedStages": [],
             "artifactHashes": {},
             "assumptions": [],
@@ -832,7 +836,7 @@ class StoryGenerationService:
                 completed.append(stage.value)
                 task["completedStages"] = completed
                 task.setdefault("artifactHashes", {})[stage.value] = digest
-                if stage is StoryGenerationStage.REQUIREMENTS:
+                if stage is StoryGenerationStage.FOUNDATION:
                     task["assumptions"] = list(artifact.get("assumptions") or [])
                 if stage is StoryGenerationStage.CHARACTERS:
                     self._materialize_author_characters(task_id, artifact)
@@ -844,8 +848,8 @@ class StoryGenerationService:
             source = self._compose_source(task_id)
             report = self.validator.validate(
                 source,
-                story_bible=self.repository.load_artifact(
-                    task_id, StoryGenerationStage.BIBLE
+                foundation=self.repository.load_artifact(
+                    task_id, StoryGenerationStage.FOUNDATION
                 ),
             )
             while (
@@ -863,8 +867,8 @@ class StoryGenerationService:
                 task["cost"] = _updated_cost(task.get("cost"), request, response)
                 report = self.validator.validate(
                     source,
-                    story_bible=self.repository.load_artifact(
-                        task_id, StoryGenerationStage.BIBLE
+                    foundation=self.repository.load_artifact(
+                        task_id, StoryGenerationStage.FOUNDATION
                     ),
                 )
                 task["validation"] = report.to_payload()
@@ -934,11 +938,10 @@ class StoryGenerationService:
             "completedArtifacts": completed,
             "constraints": {
                 "maxNodes": 25,
-                "maxVariables": 8,
-                "maxChoicesPerNode": 4,
-                "maxActiveCast": 8,
+                "maxCharacters": 128,
                 "resourceIdsMustComeFromCatalog": True,
-                "secretsOnlyInBibleOrLockedContext": True,
+                "charactersAreAStoryWidePool": True,
+                "doNotAssignCharactersToIndividualNodes": True,
             },
             "responseSchema": _stage_schema(stage),
         }
@@ -963,14 +966,17 @@ class StoryGenerationService:
                     "remove",
                     "replace-node",
                     "replace-character",
-                    "replace-variable",
-                    "replace-rule-node",
                 ],
                 "immutablePaths": [
                     "/schemaVersion",
                     "/id",
                     "/status",
                     "/startNodeId",
+                    "/variables",
+                    "/semanticSignals",
+                    "/logicGraph",
+                    "/cast/defaults",
+                    "/cast/initialCast",
                 ],
             },
             "responseSchema": {
@@ -984,49 +990,50 @@ class StoryGenerationService:
         draft = self.repository.load_draft(task_id)
         if draft is not None:
             return draft
-        requirements = self.repository.load_artifact(
-            task_id, StoryGenerationStage.REQUIREMENTS
+        foundation = self.repository.load_artifact(
+            task_id, StoryGenerationStage.FOUNDATION
         )
         characters = self.repository.load_artifact(
             task_id, StoryGenerationStage.CHARACTERS
         )
-        state = self.repository.load_artifact(task_id, StoryGenerationStage.STATE)
         narrative = self.repository.load_artifact(
             task_id, StoryGenerationStage.NARRATIVE
         )
-        logic = self.repository.load_artifact(task_id, StoryGenerationStage.LOGIC)
         resources = self.repository.load_artifact(
             task_id, StoryGenerationStage.RESOURCES
         )
-        story_id = _safe_id(
-            requirements.get("id") or f"story-{task_id[:12]}", "story id"
-        )
+        story_id = _safe_id(foundation.get("id") or f"story-{task_id[:12]}", "story id")
+        character_rows = list(characters.get("characters") or [])
+        character_ids = [
+            str(character.get("id"))
+            for character in character_rows
+            if isinstance(character, Mapping) and character.get("id")
+        ]
         source = {
             "schemaVersion": 1,
             "id": story_id,
             "version": 1,
-            "title": _required_text(
-                requirements.get("title"), "requirements.title", 200
-            ),
+            "title": _required_text(foundation.get("title"), "foundation.title", 200),
             "status": "draft",
             "startNodeId": narrative.get("startNodeId"),
             "metadata": {
-                "language": requirements.get("language", "zh-CN"),
-                "estimatedMinutes": requirements.get("estimatedMinutes"),
+                "language": foundation.get("language", "zh-CN"),
+                "estimatedMinutes": foundation.get("estimatedMinutes"),
                 "generationMode": "ai",
                 "resourceBindings": resources.get("bindings", {}),
             },
-            "variables": state.get("variables", {}),
-            "semanticSignals": state.get("semanticSignals", []),
+            "variables": {},
+            "semanticSignals": [],
             "cast": {
-                "defaults": characters.get(
-                    "defaults", {"maxActive": 8, "preserveCurrentCast": True}
-                ),
-                "initialCast": characters.get("initialCast", []),
-                "characters": characters.get("characters", []),
+                "defaults": {
+                    "maxActive": max(1, len(character_ids)),
+                    "preserveCurrentCast": True,
+                },
+                "initialCast": character_ids,
+                "characters": character_rows,
             },
             "narrativeGraph": narrative,
-            "logicGraph": logic,
+            "logicGraph": {"version": 1, "nodes": [], "edges": []},
         }
         return _json_copy(source)
 
@@ -1048,18 +1055,18 @@ class StoryGenerationService:
     def _artifacts_from_source(
         self, task_id: str, source: Mapping[str, Any]
     ) -> dict[StoryGenerationStage, dict[str, Any]]:
-        requirements = self.repository.load_artifact(
-            task_id, StoryGenerationStage.REQUIREMENTS
+        foundation = self.repository.load_artifact(
+            task_id, StoryGenerationStage.FOUNDATION
         )
-        requirements.update(
+        foundation.update(
             {
-                "id": source.get("id", requirements.get("id")),
-                "title": source.get("title", requirements.get("title")),
+                "id": source.get("id", foundation.get("id")),
+                "title": source.get("title", foundation.get("title")),
                 "language": (source.get("metadata") or {}).get(
-                    "language", requirements.get("language")
+                    "language", foundation.get("language")
                 ),
                 "estimatedMinutes": (source.get("metadata") or {}).get(
-                    "estimatedMinutes", requirements.get("estimatedMinutes")
+                    "estimatedMinutes", foundation.get("estimatedMinutes")
                 ),
             }
         )
@@ -1075,31 +1082,16 @@ class StoryGenerationService:
         )
         cast = source.get("cast") if isinstance(source.get("cast"), Mapping) else {}
         return {
-            StoryGenerationStage.REQUIREMENTS: _json_copy(requirements),
+            StoryGenerationStage.FOUNDATION: _json_copy(foundation),
             StoryGenerationStage.CHARACTERS: _json_copy(
                 {
-                    "defaults": cast.get(
-                        "defaults", {"maxActive": 8, "preserveCurrentCast": True}
-                    ),
-                    "initialCast": list(cast.get("initialCast") or []),
                     "characters": list(cast.get("characters") or []),
-                }
-            ),
-            StoryGenerationStage.STATE: _json_copy(
-                {
-                    "variables": source.get("variables", {}),
-                    "semanticSignals": source.get("semanticSignals", []),
                 }
             ),
             StoryGenerationStage.NARRATIVE: _json_copy(
                 source.get("narrativeGraph")
                 if isinstance(source.get("narrativeGraph"), Mapping)
                 else {}
-            ),
-            StoryGenerationStage.LOGIC: _json_copy(
-                source.get("logicGraph")
-                if isinstance(source.get("logicGraph"), Mapping)
-                else {"version": 1, "nodes": [], "edges": []}
             ),
             StoryGenerationStage.RESOURCES: _json_copy(resources),
         }
@@ -1153,12 +1145,9 @@ class StoryGenerationService:
             )
         value = _json_copy(artifact)
         validators: dict[StoryGenerationStage, Callable[[dict[str, Any]], None]] = {
-            StoryGenerationStage.REQUIREMENTS: _validate_requirements,
-            StoryGenerationStage.BIBLE: _validate_bible,
+            StoryGenerationStage.FOUNDATION: _validate_foundation,
             StoryGenerationStage.CHARACTERS: _validate_characters,
-            StoryGenerationStage.STATE: _validate_state,
             StoryGenerationStage.NARRATIVE: _validate_narrative,
-            StoryGenerationStage.LOGIC: _validate_logic,
             StoryGenerationStage.RESOURCES: _validate_resources,
         }
         validators[stage](value)
@@ -1252,29 +1241,26 @@ def run_story_generation_background(
 
 def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
     schemas: dict[StoryGenerationStage, Mapping[str, Any]] = {
-        StoryGenerationStage.REQUIREMENTS: {
+        StoryGenerationStage.FOUNDATION: {
             "id": "stable kebab-case story id",
             "title": "string",
             "language": "BCP-47 string",
             "estimatedMinutes": "positive integer",
             "assumptions": "string[]",
-            "requirements": "object",
-        },
-        StoryGenerationStage.BIBLE: {
             "premise": "string",
             "themes": "string[]",
             "worldRules": "string[]",
             "immutableFacts": "string[]",
-            "secrets": "string[]; never copy to exposedContext",
+            "secrets": (
+                "string[]; disclose each secret only in the instruction of the node "
+                "where it becomes knowable"
+            ),
         },
         StoryGenerationStage.CHARACTERS: {
-            "characters": "CharacterDraft[] with id, name, responsibility, roles, tags, source",
-            "initialCast": "registered character id[]",
-            "defaults": "CastDefaults",
-        },
-        StoryGenerationStage.STATE: {
-            "variables": "StoryVariableDefinition object keyed by id",
-            "semanticSignals": "SemanticSignalDefinition[]",
+            "characters": (
+                "story-wide CharacterDraft[] with id, name, responsibility, roles, "
+                "tags, source; this is an available character list, not a scene cast"
+            ),
         },
         StoryGenerationStage.NARRATIVE: {
             "startNodeId": "node id",
@@ -1282,13 +1268,9 @@ def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
                 "SimpleStoryNode[] using only limited_turn_node, free_chat_node, or "
                 "ending_node. Interactive nodes contain instruction and natural-language "
                 "transitions [{to, when}]. limited_turn_node also contains maxRounds and "
-                "may contain defaultTo. Do not generate choices or freeformIntents."
+                "may contain defaultTo. Do not generate choices, freeformIntents, "
+                "castPolicy, or per-node character lists."
             ),
-        },
-        StoryGenerationStage.LOGIC: {
-            "version": "1",
-            "nodes": "typed RuleNode[]",
-            "edges": "typed RuleEdge[]",
         },
         StoryGenerationStage.RESOURCES: {
             "bindings": "object using only supplied resource catalog ids",
@@ -1298,31 +1280,35 @@ def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
     return schemas[stage]
 
 
-def _validate_requirements(value: dict[str, Any]) -> None:
-    _safe_id(value.get("id"), "requirements.id")
-    _required_text(value.get("title"), "requirements.title", 200)
+def _validate_foundation(value: dict[str, Any]) -> None:
+    _safe_id(value.get("id"), "foundation.id")
+    _required_text(value.get("title"), "foundation.title", 200)
     assumptions = value.get("assumptions", [])
     if not isinstance(assumptions, list) or any(
         not isinstance(item, str) for item in assumptions
     ):
         raise StoryGenerationError(
-            "generation.requirements_invalid", "assumptions must be a string array"
+            "generation.foundation_invalid", "assumptions must be a string array"
         )
-
-
-def _validate_bible(value: dict[str, Any]) -> None:
-    _required_text(value.get("premise"), "bible.premise", 10_000)
+    _required_text(value.get("premise"), "foundation.premise", 10_000)
     for key in ("themes", "worldRules", "immutableFacts", "secrets"):
         items = value.get(key, [])
         if not isinstance(items, list) or any(
             not isinstance(item, str) for item in items
         ):
             raise StoryGenerationError(
-                "generation.bible_invalid", f"bible.{key} must be a string array"
+                "generation.foundation_invalid",
+                f"foundation.{key} must be a string array",
             )
 
 
 def _validate_characters(value: dict[str, Any]) -> None:
+    forbidden = [field for field in ("initialCast", "defaults") if field in value]
+    if forbidden:
+        raise StoryGenerationError(
+            "generation.characters_invalid",
+            f"characters stage only accepts the story-wide list; remove {', '.join(forbidden)}",
+        )
     characters = value.get("characters")
     if not isinstance(characters, list) or not characters or len(characters) > 128:
         raise StoryGenerationError(
@@ -1368,26 +1354,6 @@ def _validate_characters(value: dict[str, Any]) -> None:
                 "generation.characters_invalid",
                 f"character {character_id!r} is missing a source path",
             )
-    initial = value.get("initialCast", [])
-    if not isinstance(initial, list) or any(item not in ids for item in initial):
-        raise StoryGenerationError(
-            "generation.characters_invalid",
-            "initialCast must reference generated characters",
-        )
-
-
-def _validate_state(value: dict[str, Any]) -> None:
-    variables = value.get("variables")
-    signals = value.get("semanticSignals", [])
-    if not isinstance(variables, dict) or len(variables) > 64:
-        raise StoryGenerationError(
-            "generation.state_invalid",
-            "variables must be an object with at most 64 entries",
-        )
-    if not isinstance(signals, list) or len(signals) > 128:
-        raise StoryGenerationError(
-            "generation.state_invalid", "semanticSignals must be an array"
-        )
 
 
 def _validate_narrative(value: dict[str, Any]) -> None:
@@ -1409,24 +1375,32 @@ def _validate_narrative(value: dict[str, Any]) -> None:
                 "generation.narrative_invalid", f"duplicate node {node_id!r}"
             )
         ids.add(node_id)
-        node_type = str(node.get("type") or ("story" if "choices" in node else ""))
+        node_type = str(node.get("type") or "")
         if node_type not in {
             "limited_turn_node",
             "free_chat_node",
             "ending_node",
-            "story",
-            "ending",
         }:
             raise StoryGenerationError(
                 "generation.narrative_invalid",
                 f"node {node_id!r} has an unsupported type",
             )
+        forbidden = [
+            field
+            for field in (
+                "choices",
+                "freeformIntents",
+                "castPolicy",
+                "characters",
+            )
+            if field in node
+        ]
+        if forbidden:
+            raise StoryGenerationError(
+                "generation.narrative_invalid",
+                f"simple node {node_id!r} cannot contain {', '.join(forbidden)}",
+            )
         if node_type in {"limited_turn_node", "free_chat_node"}:
-            if node.get("choices") or node.get("freeformIntents"):
-                raise StoryGenerationError(
-                    "generation.narrative_invalid",
-                    f"simple node {node_id!r} cannot contain legacy interactions",
-                )
             _required_text(node.get("instruction"), f"nodes[{index}].instruction", 8000)
             transitions = node.get("transitions")
             if not isinstance(transitions, list):
@@ -1461,11 +1435,6 @@ def _validate_narrative(value: dict[str, Any]) -> None:
             raise StoryGenerationError(
                 "generation.narrative_invalid",
                 f"ending node {node_id!r} cannot define transitions",
-            )
-        policy = node.get("castPolicy")
-        if isinstance(policy, dict):
-            policy.setdefault(
-                "fallback", {"onMissingRole": "error", "onLoadFailure": "error"}
             )
     if start not in ids:
         raise StoryGenerationError(
@@ -1506,19 +1475,6 @@ def _validate_narrative(value: dict[str, Any]) -> None:
                 "generation.narrative_invalid",
                 f"nodes[{index}].defaultTo must reference one of its transitions",
             )
-
-
-def _validate_logic(value: dict[str, Any]) -> None:
-    if value.get("version") != 1:
-        raise StoryGenerationError(
-            "generation.logic_invalid", "logic graph version must be 1"
-        )
-    if not isinstance(value.get("nodes"), list) or not isinstance(
-        value.get("edges"), list
-    ):
-        raise StoryGenerationError(
-            "generation.logic_invalid", "logic graph nodes and edges must be arrays"
-        )
 
 
 def _validate_resources(value: dict[str, Any]) -> None:
@@ -1582,11 +1538,11 @@ def _binding_ids(value: Any) -> set[str]:
 
 
 def _secret_isolation_issues(
-    source: Mapping[str, Any], bible: Mapping[str, Any]
+    source: Mapping[str, Any], foundation: Mapping[str, Any]
 ) -> list[GenerationValidationIssue]:
     secrets = {
         item.strip()
-        for item in bible.get("secrets", [])
+        for item in foundation.get("secrets", [])
         if isinstance(item, str) and len(item.strip()) >= 4
     }
     if not secrets:
@@ -1596,11 +1552,18 @@ def _secret_isolation_issues(
     for index, node in enumerate(nodes if isinstance(nodes, list) else []):
         if not isinstance(node, Mapping):
             continue
+        # A simple node's instruction is its disclosure boundary: it is sent to
+        # the scene model only after that node is entered. Legacy exposedContext
+        # remains public throughout its scene and still needs leak detection.
+        if str(node.get("type") or "") in {
+            "limited_turn_node",
+            "free_chat_node",
+            "ending_node",
+        }:
+            continue
         visible_fields = (
             ("title", node.get("title", "")),
             ("exposedContext", node.get("exposedContext", {})),
-            ("instruction", node.get("instruction", "")),
-            ("transitions", node.get("transitions", [])),
         )
         for field_name, value in visible_fields:
             rendered = value if isinstance(value, str) else canonical_json(value)

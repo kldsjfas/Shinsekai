@@ -152,10 +152,10 @@ function previewStoryGeneration(id: string, status: StoryGenerationTask["status"
     assumptions: ["Browser preview uses a compact three-scene mystery."],
     cancelRequested: status === "cancelled",
     completedStages:
-      status === "succeeded" ? ["requirements", "bible", "characters", "state", "narrative", "logic", "resources"] : [],
-    cost: { estimatedTokens: 3200, inputChars: 8400, outputChars: 4400, requests: 7 },
+      status === "succeeded" ? ["foundation", "characters", "narrative", "resources"] : [],
+    cost: { estimatedTokens: 2400, inputChars: 6400, outputChars: 3200, requests: 4 },
     createdAt: now,
-    currentStage: status === "succeeded" ? "complete" : "requirements",
+    currentStage: status === "succeeded" ? "complete" : "foundation",
     draftPath: status === "succeeded" ? `data/stories/.generation/${id}/draft.json` : "",
     error: null,
     id,
