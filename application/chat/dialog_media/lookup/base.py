@@ -53,6 +53,7 @@ class AssetLookupRequest:
     candidates: tuple[AssetCandidate, ...]
     explicit_asset_id: str = ""
     vibe: str = ""
+    previous_asset_id: str = ""
 
 
 class AssetLookupStrategy(ABC):

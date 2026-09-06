@@ -76,12 +76,14 @@ def _lookup_request(
     *,
     scope: str,
     candidates,
+    previous_asset_id: str = "",
 ) -> AssetLookupRequest:
     return AssetLookupRequest(
         scope=scope,
         candidates=tuple(candidates),
         explicit_asset_id=str(msg.asset_id if msg.asset_id is not None else "-1"),
         vibe=str(msg.vibe or ""),
+        previous_asset_id=previous_asset_id,
     )
 
 
@@ -221,6 +223,7 @@ class CharacterMediaHandler(MessageHandler):
             if tts_generation_strategy is None
             else tts_generation_strategy
         )
+        self._last_sprite_by_character: dict[str, str] = {}
 
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return True
@@ -279,6 +282,7 @@ class CharacterMediaHandler(MessageHandler):
                 msg,
                 scope=f"sprite:{name_s}",
                 candidates=candidates,
+                previous_asset_id=self._last_sprite_by_character.get(name_s, ""),
             )
         )
         sprite = self.sprite_resolver.resolve(
@@ -286,6 +290,8 @@ class CharacterMediaHandler(MessageHandler):
             candidates,
             lookup_result,
         )
+        if sprite.found:
+            self._last_sprite_by_character[name_s] = sprite.asset_id
         generation_request = TtsGenerationRequest(
             runtime=rt,
             character=character_config,

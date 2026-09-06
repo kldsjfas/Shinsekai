@@ -185,10 +185,10 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByText("Prompt options")).toHaveClass("template-side-field__label");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Semantic vibe matching" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Smart sprite matching" }));
 
     await waitFor(() => expect(mockGetMemoryStatus).toHaveBeenCalledWith({ startLoading: true }));
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Semantic vibe matching" })).toBeChecked());
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).toBeChecked());
     fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 

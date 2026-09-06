@@ -73,4 +73,7 @@ class VectorDatabaseAssetLookupStrategy(AssetLookupStrategy):
                 continue
             seen.add(asset_id)
             matches.append(AssetIdMatch(asset_id=asset_id, score=score))
+        previous_asset_id = str(request.previous_asset_id or "").strip()
+        if previous_asset_id and len(matches) > 1:
+            matches.sort(key=lambda match: match.asset_id == previous_asset_id)
         return AssetLookupResult(matches=tuple(matches))

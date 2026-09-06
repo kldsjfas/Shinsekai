@@ -107,6 +107,36 @@ def test_vector_database_asset_lookup_returns_ranked_current_candidates():
     )
 
 
+def test_vector_database_asset_lookup_demotes_the_previous_asset():
+    search = MagicMock(
+        return_value=[
+            {"asset_id": "2", "score": 0.91},
+            {"asset_id": "1", "score": 0.89},
+            {"asset_id": "3", "score": 0.75},
+        ]
+    )
+    candidates = (
+        AssetCandidate("1", 0, "first.png", tags="calm"),
+        AssetCandidate("2", 1, "second.png", tags="angry"),
+        AssetCandidate("3", 2, "third.png", tags="sad"),
+    )
+
+    result = VectorDatabaseAssetLookupStrategy(search).lookup(
+        AssetLookupRequest(
+            scope="sprite:alice",
+            candidates=candidates,
+            vibe="furious",
+            previous_asset_id="2",
+        )
+    )
+
+    assert result.matches == (
+        AssetIdMatch("1", 0.89),
+        AssetIdMatch("3", 0.75),
+        AssetIdMatch("2", 0.91),
+    )
+
+
 def test_composite_asset_lookup_falls_back_to_explicit_id():
     empty = MagicMock()
     empty.lookup.return_value = AssetLookupResult()
@@ -314,6 +344,33 @@ def test_character_handler_builds_presentation_from_injected_path_strategy(
         is_final_segment=True,
         timeout=0,
     )
+
+
+def test_character_handler_passes_each_characters_previous_sprite_to_lookup(
+    mock_app_runtime,
+):
+    selected = ResolvedSpriteAsset(
+        asset_id="2",
+        index=1,
+        value={"path": "angry.png"},
+    )
+    asset_lookup = MagicMock(return_value=AssetLookupResult())
+    asset_lookup.lookup = asset_lookup
+    sprite_resolver = MagicMock()
+    sprite_resolver.candidates.return_value = ()
+    sprite_resolver.resolve.return_value = selected
+    generation = MagicMock()
+    generation.generate.return_value = []
+    handler = CharacterMediaHandler(asset_lookup, generation, sprite_resolver)
+    message = LLMDialogMessage(name="TestChar", text="Hello", vibe="angry")
+
+    handler.handle(message)
+    handler.handle(message)
+
+    first_request = asset_lookup.call_args_list[0].args[0]
+    second_request = asset_lookup.call_args_list[1].args[0]
+    assert first_request.previous_asset_id == ""
+    assert second_request.previous_asset_id == "2"
 
 
 def test_scene_handler_resolves_vibe_match_through_shared_asset_strategy(
