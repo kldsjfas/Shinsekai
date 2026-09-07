@@ -201,7 +201,9 @@ describe("TemplateEditorPage", () => {
   it("downgrades a restored semantic template when mem0 installation is declined", async () => {
     mockListTemplates.mockResolvedValue([{ ...template, mediaSelectionMode: "semantic" }]);
     mockGetMemoryStatus.mockResolvedValue({
-      moduleName: "mem0", packageName: "mem0ai", status: "missing_dependency",
+      moduleName: "mem0",
+      packageName: "mem0ai",
+      status: "missing_dependency",
     });
     vi.spyOn(window, "confirm").mockReturnValue(false);
     renderPage();
