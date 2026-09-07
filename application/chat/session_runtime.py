@@ -435,6 +435,7 @@ class _BaseChatSession:
 
     def _install_app_runtime(self) -> None:
         from application.runtime.context import AppRuntime, set_app_runtime
+        from application.chat.presentation_state import PresentationSelectionState
 
         runtime = self._require_runtime()
         set_app_runtime(
@@ -453,6 +454,7 @@ class _BaseChatSession:
                 opencc=runtime.opencc,
                 background=getattr(runtime.presentation_assets, "background", None),
                 chat_turn_service=self.chat_turn_service,
+                presentation_state=PresentationSelectionState(),
             )
         )
 
@@ -563,6 +565,7 @@ class StreamingChatSession(_BaseChatSession):
 
     def _present_initial_ui(self) -> None:
         from application.chat.presentation import prepare_initial_presentation
+        from application.runtime.context import get_app_runtime
 
         if self.options.asr_language(self.config.config.system_config) == "zh":
             welcome_html = self.options.translate_bundle(
@@ -589,6 +592,7 @@ class StreamingChatSession(_BaseChatSession):
                 ready_notification=self.options.translate("main.notify_chat"),
                 publish_branch_tree=self.streaming_bindings.branch_manager.publish_tree,
                 translate=self.options.translate,
+                presentation_state=get_app_runtime().presentation_state,
             )
 
     def _start_live_comments(self) -> None:

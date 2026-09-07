@@ -21,6 +21,8 @@ class _BranchHarness:
         self.persisted_messages: list[list[Any]] = []
         self.published_trees: list[dict[str, object]] = []
         self.replayed_history: list[object] = []
+        self.presentation: list[dict[str, Any]] = []
+        self.replayed_presentation = 0
         self.submitted: list[dict[str, object]] = []
         self.synced_history = 0
 
@@ -70,6 +72,9 @@ class _BranchHarness:
             ),
             replay_history=self.replayed_history.append,
             submit_text=submit_text,
+            get_presentation_state=lambda: copy.deepcopy(self.presentation),
+            set_presentation_state=lambda entries: setattr(self, "presentation", copy.deepcopy(list(entries or []))),
+            replay_presentation_state=lambda: setattr(self, "replayed_presentation", self.replayed_presentation + 1),
         )
 
 
@@ -141,7 +146,12 @@ def test_switch_restores_branch_messages_history_and_latest_presentation(
         bindings=harness.bindings(),
         now_ms=lambda: 2000,
     )
+    harness.presentation = [
+        {"assetId": "1", "kind": "sprite", "messageCount": 2, "name": "Mio"},
+        {"assetId": "2", "kind": "sprite", "messageCount": 4, "name": "Mio"},
+    ]
     manager.fork(1)
+    assert [entry["assetId"] for entry in harness.presentation] == ["1"]
     harness.messages.append({"role": "assistant", "content": "alternate"})
     history.append("Mio：alternate")
 
@@ -156,6 +166,8 @@ def test_switch_restores_branch_messages_history_and_latest_presentation(
     ]
     assert harness.messages == messages
     assert harness.replayed_history == ["Mio：last"]
+    assert harness.presentation[-1]["assetId"] == "2"
+    assert harness.replayed_presentation == 1
     assert harness.cancelled == 2
     assert harness.cleared_options == 2
     assert harness.published_trees[-1]["activeBranchId"] == "main"

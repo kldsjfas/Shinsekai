@@ -211,7 +211,7 @@ class DialogMediaWorker(ThreadDagNode):
                     self._emit_fallback(
                         get_app_runtime().opencc.convert(item.name),
                         item.text,
-                        str(item.asset_id) if item.asset_id is not None else "-1",
+                        str(item.asset_id) if item.asset_id is not None else None,
                         "",
                         is_system_message=False,
                         effect=item.effect,

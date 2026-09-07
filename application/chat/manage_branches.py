@@ -20,6 +20,15 @@ from core.chat_history.storage import (
 )
 
 
+def _presentation_entry_within(entry: object, message_count: int) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    try:
+        return int(entry.get("messageCount") or 0) <= message_count
+    except (TypeError, ValueError):
+        return False
+
+
 class SubmitRuntimeText(Protocol):
     def __call__(
         self,
@@ -44,6 +53,9 @@ class ConversationBranchBindings:
     sync_history: Callable[[], None]
     replay_history: Callable[[object], None]
     submit_text: SubmitRuntimeText
+    get_presentation_state: Callable[[], list[dict[str, Any]]] = lambda: []
+    set_presentation_state: Callable[[object], None] = lambda _entries: None
+    replay_presentation_state: Callable[[], None] = lambda: None
 
 
 class ConversationBranchManager:
@@ -83,6 +95,14 @@ class ConversationBranchManager:
         self.chat_history[:] = restored_history
         self.bindings.set_messages(restored_messages)
         self.state = restored
+        active = self._branches().get(self.active_branch_id) or {}
+        self.bindings.set_presentation_state(
+            [
+                entry
+                for entry in (active.get("presentation") or [])
+                if _presentation_entry_within(entry, len(restored_messages))
+            ]
+        )
 
     def publish_tree(self) -> None:
         self.bindings.publish_tree(self.tree_payload())
@@ -151,11 +171,17 @@ class ConversationBranchManager:
             "label": f"Branch {self.state['counter']}",
             "messages": copy.deepcopy(prefix_messages),
             "parentId": self.active_branch_id,
+            "presentation": self._presentation_before_message_count(
+                len(prefix_messages)
+            ),
             "updatedAt": now,
         }
         self.state["active"] = next_id
         self.chat_history[:] = prefix_history
         self.bindings.set_messages(copy.deepcopy(prefix_messages))
+        self.bindings.set_presentation_state(
+            self._branches()[next_id].get("presentation") or []
+        )
         self.bindings.clear_options()
         self.bindings.sync_history()
         self.publish_tree()
@@ -178,10 +204,12 @@ class ConversationBranchManager:
         self.state["active"] = target_id
         self.chat_history[:] = list(branch.get("history") or [])
         self.bindings.set_messages(copy.deepcopy(branch.get("messages") or []))
+        self.bindings.set_presentation_state(branch.get("presentation") or [])
         self.bindings.clear_options()
         self.bindings.sync_history()
         if self.chat_history:
             self.bindings.replay_history(self.chat_history[-1])
+        self.bindings.replay_presentation_state()
         self.publish_tree()
         self.persist()
 
@@ -212,6 +240,9 @@ class ConversationBranchManager:
                     "label": "Main",
                     "messages": copy.deepcopy(self.bindings.get_messages()),
                     "parentId": None,
+                    "presentation": copy.deepcopy(
+                        self.bindings.get_presentation_state()
+                    ),
                     "updatedAt": now,
                 }
             },
@@ -226,6 +257,9 @@ class ConversationBranchManager:
             return
         branch["history"] = list(self.chat_history)
         branch["messages"] = copy.deepcopy(self.bindings.get_messages())
+        branch["presentation"] = copy.deepcopy(
+            self.bindings.get_presentation_state()
+        )
         branch["updatedAt"] = self._now_ms()
 
     def _user_history_position(self, user_index: int) -> int:
@@ -236,6 +270,15 @@ class ConversationBranchManager:
                 if current_user_index == user_index:
                     return index
         return -1
+
+    def _presentation_before_message_count(
+        self, message_count: int
+    ) -> list[dict[str, Any]]:
+        return [
+            copy.deepcopy(entry)
+            for entry in self.bindings.get_presentation_state()
+            if _presentation_entry_within(entry, message_count)
+        ]
 
     def _messages_before_user(self, user_index: int) -> list[Any]:
         new_messages = []

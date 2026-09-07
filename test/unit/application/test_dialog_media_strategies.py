@@ -15,6 +15,7 @@ from application.chat.dialog_media import (
     AssetIdMatch,
     AssetLookupRequest,
     AssetLookupResult,
+    AssetResolver,
     CompositeAssetLookupStrategy,
     create_asset_lookup_strategy,
     DefaultTtsGenerationStrategy,
@@ -72,6 +73,15 @@ def test_message_asset_id_lookup_and_sprite_resolver_resolve_voice_metadata(tmp_
     assert match.voice_type == "preset"
     assert match.voice_path == "happy.wav"
     assert match.voice_text == "A happy line"
+
+
+def test_asset_resolver_represents_an_unknown_match_as_no_update():
+    candidates = (AssetCandidate("1", 0, "first.png"),)
+    resolved = AssetResolver().resolve(
+        candidates, AssetLookupResult(matches=(AssetIdMatch("missing", 0.9),))
+    )
+    assert resolved.found is False
+    assert resolved.asset_id is None
 
 
 def test_vector_database_asset_lookup_returns_ranked_current_candidates():
@@ -394,6 +404,12 @@ def test_scene_handler_resolves_vibe_match_through_shared_asset_strategy(
     assert request.vibe == "lonely rain"
     assert request.candidates[1].tags == "rainy, lonely"
     assert mock_app_runtime.presentation_queue.get_nowait().asset_id == "2"
+
+
+def test_scene_handler_accepts_traditional_chinese_scene_token(mock_app_runtime):
+    mock_app_runtime.opencc.convert.side_effect = lambda value: value.replace("場", "场")
+    handler = SceneMediaHandler()
+    assert handler.can_handle(LLMDialogMessage(name="場景", text="", asset_id="1"))
 
 
 def test_bgm_handler_resolves_vibe_match_through_shared_asset_strategy(

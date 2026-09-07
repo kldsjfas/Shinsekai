@@ -27,7 +27,7 @@ from core.messaging.dialog_tokens import (
     match_cg_name,
     match_cot_dialog,
     match_system_dialog,
-    match_scene_name,
+    match_scene_dialog,
     normalize_character_name,
 )
 from application.runtime.context import get_app_runtime, emit_presentation_message
@@ -35,6 +35,7 @@ from i18n import tr as tr_i18n
 from sdk.handlers import MessageHandler
 from sdk.messages import LLMDialogMessage, PresentationMessage
 from core.media.asset_tags import tag_contents
+from application.chat.presentation_state import catalog_key
 
 
 def _post_media_busy(text: str) -> None:
@@ -53,6 +54,42 @@ def _hide_media_busy() -> None:
 
 def _cc():
     return get_app_runtime().opencc
+
+
+def _refresh_config(rt) -> None:
+    """Refresh the child-process snapshot before resolving editable catalogs."""
+
+    try:
+        refresh = getattr(rt.config, "refresh_media_catalogs", None)
+        if callable(refresh):
+            refresh()
+        else:
+            rt.config.reload()
+    except Exception:
+        pass
+
+
+def _record_selection(
+    rt,
+    msg: LLMDialogMessage,
+    *,
+    kind: str,
+    name: str,
+    asset_id: str | None,
+    path: str = "",
+    candidate_catalog_key: str = "",
+) -> None:
+    if asset_id is None:
+        return
+    rt.presentation_state.record(
+        kind=kind,
+        name=name,
+        asset_id=asset_id,
+        path=path,
+        catalog_key=candidate_catalog_key,
+        message_count=len(rt.llm_manager.get_messages()),
+        turn_id=msg.turn_id,
+    )
 
 
 class ChainOfThoughtMediaHandler(MessageHandler):
@@ -99,12 +136,21 @@ class SceneMediaHandler(MessageHandler):
         self.asset_resolver = asset_resolver or AssetResolver()
 
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return match_scene_name(msg.name)
+        return match_scene_dialog(_cc(), msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
-        background = rt.background
+        _refresh_config(rt)
+        background_name = str(getattr(rt.background, "name", "") or "")
+        refreshed_background = rt.config.get_background_by_name(background_name)
+        background = (
+            refreshed_background
+            if isinstance(getattr(refreshed_background, "name", None), str)
+            else rt.background
+        )
         sprites = list(getattr(background, "sprites", None) or [])
+        if hasattr(rt.ui_update_manager, "bg_group"):
+            rt.ui_update_manager.bg_group = sprites
         tags = tag_contents(getattr(background, "bg_tags", ""), len(sprites))
         candidates = asset_candidates(sprites, tags=tags)
         result = self.asset_lookup_strategy.lookup(
@@ -115,8 +161,19 @@ class SceneMediaHandler(MessageHandler):
             )
         )
         resolved = self.asset_resolver.resolve(candidates, result)
+        if not resolved.found:
+            return
+        _record_selection(
+            rt,
+            msg,
+            kind="scene",
+            name=background_name,
+            asset_id=resolved.asset_id,
+            path=resolved.path,
+            candidate_catalog_key=catalog_key(candidates),
+        )
         emit_presentation_message(
-            normalize_character_name(msg.name),
+            _cc().convert(normalize_character_name(msg.name)),
             msg.text,
             resolved.asset_id,
             "",
@@ -157,8 +214,15 @@ class BgmMediaHandler(MessageHandler):
 
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
-        background = rt.background
-        paths = list(rt.bgm_list or [])
+        _refresh_config(rt)
+        background_name = str(getattr(rt.background, "name", "") or "")
+        refreshed_background = rt.config.get_background_by_name(background_name)
+        background = (
+            refreshed_background
+            if isinstance(getattr(refreshed_background, "name", None), str)
+            else rt.background
+        )
+        paths = list(getattr(background, "bgm_list", None) or rt.bgm_list or [])
         tags = tag_contents(getattr(background, "bgm_tags", ""), len(paths))
         candidates = asset_candidates(
             paths,
@@ -173,6 +237,17 @@ class BgmMediaHandler(MessageHandler):
             )
         )
         resolved = self.asset_resolver.resolve(candidates, result)
+        if not resolved.found:
+            return
+        _record_selection(
+            rt,
+            msg,
+            kind="bgm",
+            name=background_name,
+            asset_id=resolved.asset_id,
+            path=resolved.path,
+            candidate_catalog_key=catalog_key(candidates),
+        )
         emit_presentation_message(
             "bgm",
             "",
@@ -223,7 +298,6 @@ class CharacterMediaHandler(MessageHandler):
             if tts_generation_strategy is None
             else tts_generation_strategy
         )
-        self._last_sprite_by_character: dict[str, str] = {}
 
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return True
@@ -272,17 +346,22 @@ class CharacterMediaHandler(MessageHandler):
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
         name_s = _cc().convert(msg.name)
+        _refresh_config(rt)
         character_config = rt.config.get_character_by_name(name_s)
         if character_config is None:
             raise ValueError(f"未找到角色配置: {name_s}")
 
         candidates = self.sprite_resolver.candidates(character_config)
+        current_catalog_key = catalog_key(candidates)
+        previous = rt.presentation_state.latest(
+            "sprite", name=name_s, catalog_key=current_catalog_key
+        )
         lookup_result = self.asset_lookup_strategy.lookup(
             _lookup_request(
                 msg,
                 scope=f"sprite:{name_s}",
                 candidates=candidates,
-                previous_asset_id=self._last_sprite_by_character.get(name_s, ""),
+                previous_asset_id=str(previous.get("assetId") or "") if previous else "",
             )
         )
         sprite = self.sprite_resolver.resolve(
@@ -291,7 +370,15 @@ class CharacterMediaHandler(MessageHandler):
             lookup_result,
         )
         if sprite.found:
-            self._last_sprite_by_character[name_s] = sprite.asset_id
+            _record_selection(
+                rt,
+                msg,
+                kind="sprite",
+                name=name_s,
+                asset_id=sprite.asset_id,
+                path=sprite.path,
+                candidate_catalog_key=current_catalog_key,
+            )
         generation_request = TtsGenerationRequest(
             runtime=rt,
             character=character_config,

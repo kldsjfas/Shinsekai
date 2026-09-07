@@ -7,9 +7,22 @@ from collections.abc import Callable
 from typing import Any
 
 from config.config_manager import ConfigManager
-from core.messaging.dialog_tokens import is_option_history_name
+from core.messaging.dialog_tokens import (
+    BGM_ALIASES,
+    CG_ALIASES,
+    COT_ALIASES,
+    NARR_ALIASES,
+    SCENE_ALIASES,
+    STAT_ALIASES,
+    is_option_history_name,
+    normalize_character_name,
+)
 from application.chat.history_state import extract_valid_dialog_from_messages
 from sdk.messages import PresentationMessage
+from application.chat.presentation_state import (
+    PresentationSelectionState,
+    replay_presentation_selections,
+)
 
 
 def restore_session_presentation(
@@ -19,6 +32,7 @@ def restore_session_presentation(
     presenter: Any,
     config: ConfigManager,
     tr_i18n: Callable[..., str],
+    presentation_state: PresentationSelectionState | None = None,
 ) -> bool:
     """Re-queue the last dialog, BGM, and background after loading history."""
 
@@ -56,7 +70,19 @@ def restore_session_presentation(
             last_choice = dialog.pop()
 
         trailing_system: list = []
-        while dialog and dialog[-1].get("sprite", "-1") in {"-1", -1}:
+        system_names = (
+            BGM_ALIASES
+            | CG_ALIASES
+            | COT_ALIASES
+            | NARR_ALIASES
+            | SCENE_ALIASES
+            | STAT_ALIASES
+        )
+        while dialog and (
+            dialog[-1].get("sprite", "-1") in {"-1", -1}
+            and normalize_character_name(dialog[-1].get("character_name", ""))
+            in system_names
+        ):
             if is_option_history_name(dialog[-1].get("character_name", "")):
                 break
             trailing_system.append(dialog.pop())
@@ -73,19 +99,38 @@ def restore_session_presentation(
             )
 
         restored_character_sprite = False
+        selected_sprite = (
+            presentation_state.latest("sprite")
+            if presentation_state is not None
+            else None
+        )
         if dialog:
             last = dialog[-1]
+            last_name = last.get("character_name", "")
+            if selected_sprite is not None:
+                last_name = str(selected_sprite.get("name") or last_name)
             presentation_queue.put(
                 PresentationMessage(
                     audio_path="",
-                    character_name=last.get("character_name", ""),
+                    character_name=last_name,
                     speech=last.get("speech", ""),
-                    sprite=last.get("sprite", "-1"),
+                    sprite=(
+                        selected_sprite.get("assetId")
+                        if selected_sprite is not None
+                        else last.get("sprite", "-1")
+                    ),
                     is_system_message=False,
                     timeout=0,
                 )
             )
             restored_character_sprite = True
+
+        if presentation_state is not None:
+            restored_character_sprite = replay_presentation_selections(
+                presentation_state,
+                presentation_queue,
+                include_sprite=not bool(dialog),
+            ) or restored_character_sprite
 
         if last_choice is not None:
             presentation_queue.put(

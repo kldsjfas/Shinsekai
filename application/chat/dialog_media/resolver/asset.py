@@ -49,7 +49,7 @@ def asset_candidates(
 class ResolvedAsset:
     """An asset selected from the current configuration."""
 
-    asset_id: str
+    asset_id: str | None
     index: int | None = None
     value: Any | None = None
     path: str = ""
@@ -66,8 +66,6 @@ class AssetResolver:
         self,
         candidates: Sequence[AssetCandidate],
         result: AssetLookupResult,
-        *,
-        unresolved_asset_id: str = "-1",
     ) -> ResolvedAsset:
         by_id = {_asset_id_key(candidate.asset_id): candidate for candidate in candidates}
         for match in result.matches:
@@ -79,5 +77,4 @@ class AssetResolver:
                     value=candidate.value,
                     path=candidate.path,
                 )
-        fallback_id = result.best.asset_id if result.best is not None else unresolved_asset_id
-        return ResolvedAsset(asset_id=str(fallback_id or unresolved_asset_id))
+        return ResolvedAsset(asset_id=None)
