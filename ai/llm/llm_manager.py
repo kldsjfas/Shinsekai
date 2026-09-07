@@ -244,6 +244,7 @@ class LLMManager:
         generation_config: Optional[Dict[str, Any]] = None,
         history_file: str = "",
         hook_dispatcher: PluginHookDispatcher | None = None,
+        media_selection_mode: str = "indexed",
     ):
         self.llm_adapter = adapter
         self.messages = []
@@ -278,6 +279,9 @@ class LLMManager:
         self._cancel_requested = False
         self._turn_state: Optional[_ChatTurnState] = None
         self._history_file = history_file
+        self.media_selection_mode = (
+            "semantic" if str(media_selection_mode or "").strip().lower() == "semantic" else "indexed"
+        )
 
         # 设置日志
         self.logger = logger
@@ -1125,7 +1129,9 @@ class LLMManager:
                 **kwargs,
             )
         else:
-            needs_repair = dialog_output_required and not has_valid_dialog_output(collected_content)
+            needs_repair = dialog_output_required and not has_valid_dialog_output(
+                collected_content, media_selection_mode=self.media_selection_mode
+            )
             if needs_repair:
                 collected_content = repair_dialog_output(
                     self.llm_adapter,
@@ -1134,13 +1140,16 @@ class LLMManager:
                     merged_kwargs,
                     cancelled=lambda: self._cancel_requested,
                     event_logger=self.logger,
+                    media_selection_mode=self.media_selection_mode,
                 )
             if self._cancel_requested:
                 return
             persisted = self._persist_plain_assistant_turn(collected_content, collected_reasoning)
             # Mark repaired content separately so the worker can append only
             # dialogue items that were not already emitted from the live stream.
-            if persisted and needs_repair and has_valid_dialog_output(collected_content):
+            if persisted and needs_repair and has_valid_dialog_output(
+                collected_content, media_selection_mode=self.media_selection_mode
+            ):
                 yield {STREAM_DIALOG_REPAIR_KEY: collected_content}
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
@@ -1258,6 +1267,7 @@ class LLMManager:
                     merged_kwargs,
                     cancelled=lambda: self._cancel_requested,
                     event_logger=self.logger,
+                    media_selection_mode=self.media_selection_mode,
                 )
             if self._cancel_requested:
                 return ""

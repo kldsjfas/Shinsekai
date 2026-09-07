@@ -165,6 +165,9 @@ def create_chat_startup_context(
             hook_dispatcher=(
                 plugin_manager.hook_dispatcher if plugin_manager is not None else None
             ),
+            media_selection_mode=str(
+                getattr(args, "media_selection_mode", "indexed") or "indexed"
+            ),
         )
         if plugin_manager is not None:
             runtime.install_memory_hooks(
