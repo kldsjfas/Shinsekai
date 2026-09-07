@@ -19,10 +19,6 @@ from core.messaging.dialog_tokens import (
 )
 from application.chat.history_state import extract_valid_dialog_from_messages
 from sdk.messages import PresentationMessage
-from application.chat.presentation_state import (
-    PresentationSelectionState,
-    replay_presentation_selections,
-)
 
 
 def restore_session_presentation(
@@ -32,7 +28,7 @@ def restore_session_presentation(
     presenter: Any,
     config: ConfigManager,
     tr_i18n: Callable[..., str],
-    presentation_state: PresentationSelectionState | None = None,
+    replay_media: Callable[[list[Any]], bool] | None = None,
 ) -> bool:
     """Re-queue the last dialog, BGM, and background after loading history."""
 
@@ -99,38 +95,24 @@ def restore_session_presentation(
             )
 
         restored_character_sprite = False
-        selected_sprite = (
-            presentation_state.latest("sprite")
-            if presentation_state is not None
-            else None
-        )
         if dialog:
             last = dialog[-1]
-            last_name = last.get("character_name", "")
-            if selected_sprite is not None:
-                last_name = str(selected_sprite.get("name") or last_name)
             presentation_queue.put(
                 PresentationMessage(
                     audio_path="",
-                    character_name=last_name,
+                    character_name=last.get("character_name", ""),
                     speech=last.get("speech", ""),
-                    sprite=(
-                        selected_sprite.get("assetId")
-                        if selected_sprite is not None
-                        else last.get("sprite", "-1")
-                    ),
+                    sprite=(None if replay_media is not None else last.get("sprite", "-1")),
                     is_system_message=False,
                     timeout=0,
                 )
             )
             restored_character_sprite = True
 
-        if presentation_state is not None:
-            restored_character_sprite = replay_presentation_selections(
-                presentation_state,
-                presentation_queue,
-                include_sprite=not bool(dialog),
-            ) or restored_character_sprite
+        if replay_media is not None:
+            restored_character_sprite = (
+                replay_media(messages) or restored_character_sprite
+            )
 
         if last_choice is not None:
             presentation_queue.put(

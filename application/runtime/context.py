@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 from core.messaging.chat_turn_service import ChatTurnService
-from application.chat.presentation_state import PresentationSelectionState
 from sdk.llm_runtime import set_llm_host_runtime
 
 
@@ -85,9 +84,6 @@ class AppRuntime:
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     ui_playback: UiPlaybackBridge = field(default_factory=UiPlaybackBridge)
     chat_turn_service: ChatTurnService = field(default_factory=ChatTurnService)
-    presentation_state: PresentationSelectionState = field(
-        default_factory=PresentationSelectionState
-    )
     tool_confirmations: ToolConfirmationController = field(
         default_factory=ToolConfirmationController
     )

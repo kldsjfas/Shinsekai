@@ -383,6 +383,68 @@ def test_character_handler_passes_each_characters_previous_sprite_to_lookup(
     assert second_request.previous_asset_id == "2"
 
 
+def test_character_media_replay_resolves_sprite_without_generating_speech(
+    mock_app_runtime,
+):
+    selected = ResolvedSpriteAsset(asset_id="2", index=1, value={"path": "angry.png"})
+    asset_lookup = MagicMock(return_value=AssetLookupResult())
+    asset_lookup.lookup = asset_lookup
+    sprite_resolver = MagicMock()
+    sprite_resolver.candidates.return_value = (
+        AssetCandidate("2", 1, {"path": "angry.png"}, path="angry.png", tags="angry"),
+    )
+    sprite_resolver.resolve.return_value = selected
+    generation = MagicMock()
+    handler = CharacterMediaHandler(asset_lookup, generation, sprite_resolver)
+
+    handler.handle(
+        LLMDialogMessage(
+            name="TestChar",
+            text="original speech",
+            vibe="angry",
+        ).model_copy(update={"_presentation_replay": True})
+    )
+
+    generation.generate.assert_not_called()
+    request = asset_lookup.call_args.args[0]
+    assert request.vibe == "angry"
+    assert mock_app_runtime.presentation_queue.get_nowait() == PresentationMessage(
+        audio_path="",
+        name="TestChar",
+        text="",
+        asset_id="2",
+        is_system_message=False,
+        timeout=0,
+    )
+
+
+def test_character_handler_forgets_previous_sprite_when_catalog_changes(
+    mock_app_runtime,
+):
+    first_catalog = (
+        AssetCandidate("1", 0, "old.png", path="old.png", tags="calm"),
+    )
+    second_catalog = (
+        AssetCandidate("1", 0, "new.png", path="new.png", tags="calm"),
+    )
+    selected = ResolvedSpriteAsset(asset_id="1", index=0, value="sprite")
+    asset_lookup = MagicMock(return_value=AssetLookupResult())
+    asset_lookup.lookup = asset_lookup
+    sprite_resolver = MagicMock()
+    sprite_resolver.candidates.side_effect = [first_catalog, second_catalog]
+    sprite_resolver.resolve.return_value = selected
+    generation = MagicMock()
+    generation.generate.return_value = []
+    handler = CharacterMediaHandler(asset_lookup, generation, sprite_resolver)
+    message = LLMDialogMessage(name="TestChar", text="Hello", vibe="calm")
+
+    handler.handle(message)
+    handler.handle(message)
+
+    assert asset_lookup.call_args_list[0].args[0].previous_asset_id == ""
+    assert asset_lookup.call_args_list[1].args[0].previous_asset_id == ""
+
+
 def test_scene_handler_resolves_vibe_match_through_shared_asset_strategy(
     mock_app_runtime,
 ):

@@ -85,7 +85,6 @@ class ChatCommandDispatcher:
         history_argument: str = "",
         history_presenter: Any = None,
         tts_manager: Any = None,
-        presentation_state: Any = None,
     ) -> None:
         self.bindings = bindings
         self.config = config
@@ -99,7 +98,6 @@ class ChatCommandDispatcher:
         self.history_argument = str(history_argument or "")
         self.history_presenter = history_presenter
         self.tts_manager = tts_manager
-        self.presentation_state = presentation_state
 
         self._handlers: dict[str, Callable[[object], None]] = {
             "close-session": self._close_session,
@@ -265,9 +263,6 @@ class ChatCommandDispatcher:
         if callable(strip_orphaned):
             strip_orphaned()
         reroll_payload = pop_last_assistant_turn_payload(self.chat_history, messages)
-        if self.presentation_state is not None:
-            self.presentation_state.prune(len(messages))
-            self.branch_manager.persist()
         reroll_text = str(reroll_payload.get("text") or "")
         reroll_attachments = list(reroll_payload.get("attachments") or [])
         if not reroll_text and not reroll_attachments:
@@ -294,8 +289,6 @@ class ChatCommandDispatcher:
         else:
             history_target = str(Path("data/chat_history") / "_temp.json")
         clear_chat_history(history_target, self.presentation_queue, self.llm_manager)
-        if self.presentation_state is not None:
-            self.presentation_state.clear()
         self.branch_manager.reset()
         self.branch_manager.persist()
         self.bindings.ui.clear_options()
@@ -337,10 +330,10 @@ class ChatCommandDispatcher:
             hist=self.chat_history,
             window=self.history_presenter,
         )
-        if self.presentation_state is not None:
-            self.presentation_state.prune(len(self.llm_manager.get_messages()))
-            self.branch_manager.bindings.replay_presentation_state()
-            self.branch_manager.persist()
+        replay_media = getattr(self.branch_manager, "replay_media", None)
+        if callable(replay_media):
+            replay_media(self.llm_manager.get_messages())
+        self.branch_manager.persist()
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
 

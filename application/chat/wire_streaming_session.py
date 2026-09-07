@@ -19,8 +19,7 @@ from application.chat.manage_branches import (
 from application.chat.presentation import StreamingHistoryPresenter
 from application.chat.startup import chat_history_is_present
 from application.runtime.context import resolve_pending_tool_confirmation
-from application.runtime.context import get_app_runtime
-from application.chat.presentation_state import replay_presentation_selections
+from application.chat.dialog_media.replay import enqueue_latest_media_replay
 from core.media.chat_attachments import resolve_chat_attachments
 
 
@@ -163,7 +162,6 @@ class _StreamingSessionWiring:
         return True
 
     def _create_branch_manager(self) -> ConversationBranchManager:
-        presentation_state = get_app_runtime().presentation_state
         manager = ConversationBranchManager(
             history_path=self.args.history,
             chat_history=chat_history,
@@ -185,11 +183,10 @@ class _StreamingSessionWiring:
                     str(entry),
                 ),
                 submit_text=self.submit_runtime_text,
-                get_presentation_state=presentation_state.snapshot,
-                set_presentation_state=presentation_state.restore,
-                replay_presentation_state=lambda: replay_presentation_selections(
-                    presentation_state,
-                    self.runtime.presentation_queue,
+                replay_media=lambda messages: enqueue_latest_media_replay(
+                    messages,
+                    dialog_queue=self.runtime.dialog_queue,
+                    opencc=self.runtime.opencc,
                 ),
             ),
         )
@@ -301,7 +298,6 @@ class _StreamingSessionWiring:
             presentation_queue=self.runtime.presentation_queue,
             history_argument=self.args.history,
             history_presenter=StreamingHistoryPresenter(self.ui_updates),
-            presentation_state=get_app_runtime().presentation_state,
             tts_manager=self.startup.tts_manager,
         )
 

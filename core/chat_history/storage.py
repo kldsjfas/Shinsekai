@@ -130,7 +130,6 @@ def normalize_branch_state(raw: Any) -> dict[str, Any] | None:
             "label": str(item.get("label") or branch_id),
             "messages": _copy_jsonable_list(item.get("messages")),
             "parentId": item.get("parentId") if item.get("parentId") else None,
-            "presentation": _copy_jsonable_list(item.get("presentation")),
             "updatedAt": item.get("updatedAt"),
         }
 

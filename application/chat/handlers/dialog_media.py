@@ -35,7 +35,6 @@ from i18n import tr as tr_i18n
 from sdk.handlers import MessageHandler
 from sdk.messages import LLMDialogMessage, PresentationMessage
 from core.media.asset_tags import tag_contents
-from application.chat.presentation_state import catalog_key
 
 
 def _post_media_busy(text: str) -> None:
@@ -67,29 +66,6 @@ def _refresh_config(rt) -> None:
             rt.config.reload()
     except Exception:
         pass
-
-
-def _record_selection(
-    rt,
-    msg: LLMDialogMessage,
-    *,
-    kind: str,
-    name: str,
-    asset_id: str | None,
-    path: str = "",
-    candidate_catalog_key: str = "",
-) -> None:
-    if asset_id is None:
-        return
-    rt.presentation_state.record(
-        kind=kind,
-        name=name,
-        asset_id=asset_id,
-        path=path,
-        catalog_key=candidate_catalog_key,
-        message_count=len(rt.llm_manager.get_messages()),
-        turn_id=msg.turn_id,
-    )
 
 
 class ChainOfThoughtMediaHandler(MessageHandler):
@@ -163,15 +139,6 @@ class SceneMediaHandler(MessageHandler):
         resolved = self.asset_resolver.resolve(candidates, result)
         if not resolved.found:
             return
-        _record_selection(
-            rt,
-            msg,
-            kind="scene",
-            name=background_name,
-            asset_id=resolved.asset_id,
-            path=resolved.path,
-            candidate_catalog_key=catalog_key(candidates),
-        )
         emit_presentation_message(
             _cc().convert(normalize_character_name(msg.name)),
             msg.text,
@@ -239,15 +206,6 @@ class BgmMediaHandler(MessageHandler):
         resolved = self.asset_resolver.resolve(candidates, result)
         if not resolved.found:
             return
-        _record_selection(
-            rt,
-            msg,
-            kind="bgm",
-            name=background_name,
-            asset_id=resolved.asset_id,
-            path=resolved.path,
-            candidate_catalog_key=catalog_key(candidates),
-        )
         emit_presentation_message(
             "bgm",
             "",
@@ -298,6 +256,8 @@ class CharacterMediaHandler(MessageHandler):
             if tts_generation_strategy is None
             else tts_generation_strategy
         )
+        self._last_sprite_by_character: dict[str, str] = {}
+        self._sprite_catalog_by_character: dict[str, tuple[tuple[str, str, str], ...]] = {}
 
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return True
@@ -352,16 +312,19 @@ class CharacterMediaHandler(MessageHandler):
             raise ValueError(f"未找到角色配置: {name_s}")
 
         candidates = self.sprite_resolver.candidates(character_config)
-        current_catalog_key = catalog_key(candidates)
-        previous = rt.presentation_state.latest(
-            "sprite", name=name_s, catalog_key=current_catalog_key
+        current_catalog = tuple(
+            (candidate.asset_id, candidate.path, candidate.tags)
+            for candidate in candidates
         )
+        if self._sprite_catalog_by_character.get(name_s) != current_catalog:
+            self._last_sprite_by_character.pop(name_s, None)
+            self._sprite_catalog_by_character[name_s] = current_catalog
         lookup_result = self.asset_lookup_strategy.lookup(
             _lookup_request(
                 msg,
                 scope=f"sprite:{name_s}",
                 candidates=candidates,
-                previous_asset_id=str(previous.get("assetId") or "") if previous else "",
+                previous_asset_id=self._last_sprite_by_character.get(name_s, ""),
             )
         )
         sprite = self.sprite_resolver.resolve(
@@ -370,15 +333,20 @@ class CharacterMediaHandler(MessageHandler):
             lookup_result,
         )
         if sprite.found:
-            _record_selection(
-                rt,
-                msg,
-                kind="sprite",
-                name=name_s,
-                asset_id=sprite.asset_id,
-                path=sprite.path,
-                candidate_catalog_key=current_catalog_key,
+            self._last_sprite_by_character[name_s] = sprite.asset_id
+        if bool(getattr(msg, "_presentation_replay", False)):
+            rt.presentation_queue.put(
+                PresentationMessage(
+                    audio_path="",
+                    name=name_s,
+                    text="",
+                    asset_id=sprite.asset_id,
+                    effect="",
+                    is_system_message=False,
+                    timeout=0,
+                )
             )
+            return
         generation_request = TtsGenerationRequest(
             runtime=rt,
             character=character_config,

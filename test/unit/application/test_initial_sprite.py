@@ -231,3 +231,40 @@ def test_restore_session_ui_reports_restored_character_sprite(monkeypatch):
     output = queue.get_nowait()
     assert output.name == "七海千秋"
     assert output.asset_id == "1"
+
+
+def test_restore_session_ui_replays_raw_media_and_does_not_reuse_raw_sprite(
+    monkeypatch,
+):
+    queue = Queue()
+    window = _Window()
+    replayed = []
+    messages = [{"role": "assistant", "content": "raw"}]
+    monkeypatch.setattr(
+        session_restore,
+        "extract_valid_dialog_from_messages",
+        lambda _messages: [
+            {
+                "character_name": "七海千秋",
+                "speech": "你好",
+                "sprite": "8",
+                "vibe": "平静",
+            },
+        ],
+    )
+
+    restored = session_restore.restore_session_presentation(
+        messages,
+        presentation_queue=queue,
+        presenter=window,
+        config=_config(),
+        tr_i18n=lambda key, **kwargs: key,
+        replay_media=lambda source: replayed.append(source) or True,
+    )
+
+    assert restored is True
+    assert replayed == [messages]
+    output = queue.get_nowait()
+    assert output.name == "七海千秋"
+    assert output.text == "你好"
+    assert output.asset_id is None
