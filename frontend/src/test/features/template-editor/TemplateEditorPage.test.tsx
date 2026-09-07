@@ -185,6 +185,7 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByText("Prompt options")).toHaveClass("template-side-field__label");
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "Smart sprite matching" }));
 
     await waitFor(() => expect(mockGetMemoryStatus).toHaveBeenCalledWith({ startLoading: true }));
@@ -195,6 +196,18 @@ describe("TemplateEditorPage", () => {
     await waitFor(() =>
       expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "semantic" })),
     );
+  });
+
+  it("downgrades a restored semantic template when mem0 installation is declined", async () => {
+    mockListTemplates.mockResolvedValue([{ ...template, mediaSelectionMode: "semantic" }]);
+    mockGetMemoryStatus.mockResolvedValue({
+      moduleName: "mem0", packageName: "mem0ai", status: "missing_dependency",
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderPage();
+    const toggle = await screen.findByRole("checkbox", { name: "Smart sprite matching" });
+    await waitFor(() => expect(window.confirm).toHaveBeenCalled());
+    await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
   it("asks for primary characters above the threshold and generates missing supporting briefs", async () => {

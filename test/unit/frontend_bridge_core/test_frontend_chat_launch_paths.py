@@ -7,6 +7,7 @@ from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from application.chat import runtime_process as chat
 from application.chat.stop_chat import stop_chat
 from application.runtime.dependencies import runtime_dependency_error_from_text
+from frontend_bridge_core.chat_session import _usable_media_selection_mode
 
 
 class _SystemConfig:
@@ -109,6 +110,24 @@ class _ChatStreamForClose:
 
     def delete_session(self, session_id: str):
         self.deleted.append(session_id)
+
+
+def test_semantic_mode_is_downgraded_before_launch_while_mem0_is_loading(monkeypatch):
+    monkeypatch.setattr(
+        "frontend_bridge_core.memory._get_mem0_status",
+        lambda *, start_loading: {"status": "loading"},
+    )
+
+    assert _usable_media_selection_mode("semantic") == "indexed"
+
+
+def test_semantic_mode_is_kept_when_mem0_is_ready(monkeypatch):
+    monkeypatch.setattr(
+        "frontend_bridge_core.memory._get_mem0_status",
+        lambda *, start_loading: {"status": "ready"},
+    )
+
+    assert _usable_media_selection_mode("semantic") == "semantic"
 
 
 def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch):

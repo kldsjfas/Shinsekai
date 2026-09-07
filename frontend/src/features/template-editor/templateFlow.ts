@@ -64,6 +64,7 @@ export function createTemplateDraft(name: string): TemplateSummary {
     id: "",
     name,
     path: "",
+    mediaSelectionMode: "indexed",
     scenario: "",
     system: "",
     updatedAt: "",
@@ -76,6 +77,7 @@ export function normalizeTemplateSummary(template: TemplateSummary): TemplateSum
   return {
     ...template,
     content: composeTemplateContent(scenario, system),
+    mediaSelectionMode: template.mediaSelectionMode ?? "indexed",
     scenario,
     system,
   };

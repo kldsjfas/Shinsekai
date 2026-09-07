@@ -25,6 +25,7 @@ from sdk.path_utils import safe_child_path, safe_filename
 
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
 MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
+MARK_METADATA = "<<<EASYAI_TEMPLATE_METADATA>>>"
 TEMP_SPLIT_META = "_temp_split.json"
 DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
 
@@ -39,10 +40,45 @@ def _template_id(path: Path) -> str:
     return path.name
 
 
-def _compose_stored_template(scenario: str, system: str) -> str:
+def _normalize_media_selection_mode(value: object) -> str:
+    return (
+        "semantic"
+        if str(value or "").strip().lower() == "semantic"
+        else "indexed"
+    )
+
+
+def _compose_stored_template(
+    scenario: str,
+    system: str,
+    *,
+    media_selection_mode: str = "indexed",
+) -> str:
     a = (scenario or "").replace("\r\n", "\n").rstrip()
     b = (system or "").replace("\r\n", "\n").rstrip()
-    return f"{MARK_SCENARIO}\n{a}\n{MARK_SYSTEM}\n{b}\n"
+    metadata = json.dumps(
+        {"mediaSelectionMode": _normalize_media_selection_mode(media_selection_mode)},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"{MARK_METADATA}\n{metadata}\n{MARK_SCENARIO}\n{a}\n{MARK_SYSTEM}\n{b}\n"
+
+
+def _parse_stored_template_metadata(raw: str) -> dict[str, str]:
+    text = (raw or "").replace("\r\n", "\n")
+    if MARK_METADATA not in text:
+        return {"mediaSelectionMode": "indexed"}
+    try:
+        start = text.index(MARK_METADATA) + len(MARK_METADATA)
+        end = text.index(MARK_SCENARIO, start)
+        parsed = json.loads(text[start:end].strip())
+    except (ValueError, json.JSONDecodeError):
+        parsed = {}
+    return {
+        "mediaSelectionMode": _normalize_media_selection_mode(
+            parsed.get("mediaSelectionMode") if isinstance(parsed, dict) else None
+        )
+    }
 
 
 def _parse_stored_template(raw: str) -> tuple[str, str]:
@@ -215,6 +251,7 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
         except OSError:
             continue
         scenario, system = _parse_stored_template(raw)
+        metadata = _parse_stored_template_metadata(raw)
         rows.append(
             {
                 "content": _compose_for_llm(scenario, system),
@@ -223,6 +260,7 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
                 "path": path.as_posix(),
                 "scenario": scenario,
                 "system": system,
+                "mediaSelectionMode": metadata["mediaSelectionMode"],
                 "updatedAt": str(int(path.stat().st_mtime)),
             }
         )
@@ -238,9 +276,16 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
         raise ValueError("template name is required")
     scenario = _scenario_from_template_like(template)
     system = str(template.get("system") or "")
+    media_selection_mode = _normalize_media_selection_mode(
+        template.get("mediaSelectionMode")
+    )
     file_name = safe_filename(name, default_suffix=".txt")
     safe_child_path(_template_dir(state), file_name).write_text(
-        _compose_stored_template(scenario, system),
+        _compose_stored_template(
+            scenario,
+            system,
+            media_selection_mode=media_selection_mode,
+        ),
         encoding="utf-8",
     )
     for row in _list_templates(state):
@@ -307,6 +352,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         "path": "",
         "scenario": scenario,
         "system": content,
+        "mediaSelectionMode": media_selection_mode,
         "updatedAt": "",
         "resolvedCharacters": resolved_names,
     }

@@ -4,6 +4,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from application.chat.templates import (
+    MARK_METADATA,
     MARK_SCENARIO,
     MARK_SYSTEM,
     _compose_runtime_template,
@@ -13,6 +14,7 @@ from application.chat.templates import (
     _history_id_from_scenario,
     _load_template_session_payload,
     _parse_stored_template,
+    _parse_stored_template_metadata,
     _rename_template_session_character,
     _scenario_from_template_like,
     _safe_session_int,
@@ -25,13 +27,27 @@ from ai.llm.template_generator import NoValidCharactersError, TemplateGenerator
 def test_stored_template_round_trips_scenario_and_system_sections():
     raw = _compose_stored_template("  opening\r\nscene  ", " system\r\nrules ")
 
-    assert raw == f"{MARK_SCENARIO}\n  opening\nscene\n{MARK_SYSTEM}\n system\nrules\n"
+    assert raw == (
+        f'{MARK_METADATA}\n{{"mediaSelectionMode":"indexed"}}\n'
+        f"{MARK_SCENARIO}\n  opening\nscene\n{MARK_SYSTEM}\n system\nrules\n"
+    )
     assert _parse_stored_template(raw) == ("  opening\nscene", " system\nrules")
 
 
 def test_parse_stored_template_handles_legacy_single_body_text():
     assert _parse_stored_template("legacy template") == ("legacy template", "")
     assert _parse_stored_template("  \n") == ("", "")
+    assert _parse_stored_template_metadata("legacy template") == {
+        "mediaSelectionMode": "indexed"
+    }
+
+
+def test_stored_template_round_trips_semantic_media_metadata():
+    raw = _compose_stored_template("scene", "system", media_selection_mode="semantic")
+
+    assert _parse_stored_template_metadata(raw) == {
+        "mediaSelectionMode": "semantic"
+    }
 
 
 def test_history_id_uses_effective_scenario_and_selected_characters():

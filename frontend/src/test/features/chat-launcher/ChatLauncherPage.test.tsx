@@ -285,6 +285,7 @@ describe("ChatLauncherPage", () => {
         content: "template content",
         id: "tpl-session",
         name: "Session Template",
+        mediaSelectionMode: "semantic",
         path: "D:/templates/session.yaml",
         scenario: "festival night",
         system: "stay in character",

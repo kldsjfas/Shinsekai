@@ -495,6 +495,7 @@ export interface TemplateSummary {
   id: string;
   name: string;
   path: string;
+  mediaSelectionMode?: MediaSelectionMode;
   scenario?: string;
   system?: string;
   updatedAt: string;

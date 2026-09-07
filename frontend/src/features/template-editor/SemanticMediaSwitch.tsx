@@ -62,6 +62,9 @@ export function SemanticMediaSwitch({ checked, onChange }: SemanticMediaSwitchPr
           }),
         );
         if (!shouldInstall) {
+          if (mountedRef.current) {
+            onChange(false);
+          }
           return;
         }
         await installMissingRuntimeDependency({ moduleName: status.moduleName || "mem0" });

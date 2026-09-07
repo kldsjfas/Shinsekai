@@ -219,6 +219,7 @@ export function TemplateEditorPage() {
     if (selected && !sessionDraftActive) {
       setSelectedId(selected.id);
       setDraft(normalizeTemplateSummary(structuredClone(selected)));
+      setMediaSelectionMode(selected.mediaSelectionMode ?? "indexed");
       setNameError("");
     }
   }, [selected, sessionDraftActive]);
@@ -273,6 +274,7 @@ export function TemplateEditorPage() {
         id: matchingTemplate?.id ?? "",
         name: launchSession.filenameStub || matchingTemplate?.name || t("template.defaultName"),
         path: matchingTemplate?.path ?? "",
+        mediaSelectionMode: restoredMediaSelectionMode,
         scenario: launchSession.scenario,
         system: launchSession.system,
         updatedAt: matchingTemplate?.updatedAt ?? "",
@@ -1024,7 +1026,11 @@ export function TemplateEditorPage() {
           <div className="template-option-list">
             <SemanticMediaSwitch
               checked={mediaSelectionMode === "semantic"}
-              onChange={(enabled) => setMediaSelectionMode(enabled ? "semantic" : "indexed")}
+              onChange={(enabled) => {
+                const mode = enabled ? "semantic" : "indexed";
+                setMediaSelectionMode(mode);
+                setDraft((current) => ({ ...current, mediaSelectionMode: mode }));
+              }}
             />
             {templateOptions.map((option) => (
               <label className="template-toggle-row" key={option.key}>
