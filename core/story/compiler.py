@@ -262,8 +262,13 @@ class StoryCompiler:
         diagnostics.sort(key=lambda item: (item.path, item.code, item.message))
         if any(item.severity == DiagnosticSeverity.ERROR for item in diagnostics):
             return CompileResult(program=None, diagnostics=tuple(diagnostics))
+        hash_source = _primitive(project)
+        # Empty background suggestions do not change a project. Preserve hashes
+        # written before this optional metadata field existed.
+        if not project.metadata.backgrounds:
+            hash_source["metadata"].pop("backgrounds", None)
         source_hash = hashlib.sha256(
-            canonical_json(project).encode("utf-8")
+            canonical_json(hash_source).encode("utf-8")
         ).hexdigest()
         simple_cast_policy = CastPolicy(
             required=project.character_registry.initial_cast,

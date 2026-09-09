@@ -85,7 +85,9 @@ class _ChatStream:
 
 
 class _SceneService:
-    def handle_free_text(self, text: str, *, command_id: str, message_id: str):
+    def handle_free_text(
+        self, text: str, *, command_id: str, message_id: str, user_name: str = "你"
+    ):
         return SceneTurnResult(
             command_id=command_id,
             revision=2,

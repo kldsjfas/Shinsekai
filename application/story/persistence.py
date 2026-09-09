@@ -462,7 +462,7 @@ class JsonGlobalStoryProgressStore:
         return self.root / global_progress_filename(story_id)
 
 
-def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+def _atomic_write_json(path: Path, payload: Any) -> None:
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(

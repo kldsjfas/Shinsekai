@@ -455,6 +455,7 @@ class SceneOrchestrator:
         *,
         command_id: str,
         message_id: str,
+        user_name: str = "你",
     ) -> SceneTurnResult:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
         user_text = str(text).strip()
@@ -491,6 +492,24 @@ class SceneOrchestrator:
             user_text=user_text,
             message_id=message_id,
         )
+        try:
+            result = self._generate_turn(command, contexts, actor_context)
+            # Persistence errors are not model failures. Keep them outside the
+            # repair/fallback loop so a saved reply can be retried unchanged.
+            return self._persist_turn(command, result, user_name=user_name)
+        finally:
+            self.session.end_scene_turn(scope)
+            self._scope = None
+
+    def _generate_turn(
+        self,
+        command: SceneTurnCommand,
+        contexts: SceneContexts,
+        actor_context: ActorContext,
+    ) -> SceneTurnResult:
+        command_id = command.command_id
+        message_id = command.message_id
+        user_text = command.text
         tool_results: list[Mapping[str, Any]] = []
         total_calls = 0
         try:
@@ -534,20 +553,13 @@ class SceneOrchestrator:
                     continue
                 dialogue = self._validated_dialogue(response, actor_context)
                 next_node_id = self._validated_next_node(response)
-                next_node_id = self._advance_simple_node(
-                    next_node_id,
+                return SceneTurnResult(
                     command_id=command_id,
-                )
-                return self._persist_turn(
-                    command,
-                    SceneTurnResult(
-                        command_id=command_id,
-                        revision=self.session.active_branch.state.revision,
-                        dialogue=dialogue,
-                        next_node_id=next_node_id,
-                        tool_results=tuple(tool_results),
-                        presentation_events=tuple(self._presentation_events),
-                    ),
+                    revision=self.session.active_branch.state.revision,
+                    dialogue=dialogue,
+                    next_node_id=next_node_id,
+                    tool_results=tuple(tool_results),
+                    presentation_events=tuple(self._presentation_events),
                 )
             raise SceneProtocolError(
                 "scene.round_limit",
@@ -568,33 +580,20 @@ class SceneOrchestrator:
                 )
                 if repaired is not None:
                     repaired_dialogue, repaired_next_node_id = repaired
-                    repaired_next_node_id = self._advance_simple_node(
-                        repaired_next_node_id,
+                    return SceneTurnResult(
                         command_id=command_id,
+                        revision=self.session.active_branch.state.revision,
+                        dialogue=repaired_dialogue,
+                        next_node_id=repaired_next_node_id,
+                        tool_results=tuple(tool_results),
+                        diagnostic=error.code,
+                        presentation_events=tuple(self._presentation_events),
                     )
-                    return self._persist_turn(
-                        command,
-                        SceneTurnResult(
-                            command_id=command_id,
-                            revision=self.session.active_branch.state.revision,
-                            dialogue=repaired_dialogue,
-                            next_node_id=repaired_next_node_id,
-                            tool_results=tuple(tool_results),
-                            diagnostic=error.code,
-                            presentation_events=tuple(self._presentation_events),
-                        ),
-                    )
-            return self._persist_turn(
-                command,
-                self._fallback(
-                    command_id,
-                    tool_results,
-                    getattr(error, "code", type(error).__name__),
-                ),
+            return self._fallback(
+                command_id,
+                tool_results,
+                getattr(error, "code", type(error).__name__),
             )
-        finally:
-            self.session.end_scene_turn(scope)
-            self._scope = None
 
     def _require_active_scope(self) -> None:
         scope = self._scope
@@ -609,11 +608,24 @@ class SceneOrchestrator:
         self,
         command: SceneTurnCommand,
         result: SceneTurnResult,
+        *,
+        user_name: str,
     ) -> SceneTurnResult:
+        advance = (
+            None
+            if result.degraded
+            else self._simple_node_command(
+                result.next_node_id, command_id=command.command_id
+            )
+        )
+        if advance is not None:
+            result = replace(result, next_node_id=advance.next_node_id)
         ack = self.session.record_scene_turn(
             command,
             result_payload=result.to_payload(),
             scene_scope=self._scope,
+            advance_command=advance,
+            user_name=user_name,
         )
         payload = ack.get("sceneTurn")
         if isinstance(payload, Mapping):
@@ -878,12 +890,12 @@ class SceneOrchestrator:
             )
         return target
 
-    def _advance_simple_node(
+    def _simple_node_command(
         self,
         next_node_id: str | None,
         *,
         command_id: str,
-    ) -> str | None:
+    ) -> AdvanceStoryTurn | None:
         state = self.session.active_branch.state
         node = self.program.nodes_by_id[state.current_node_id]
         if node.type not in {
@@ -899,15 +911,12 @@ class SceneOrchestrator:
             and state.node_turn_count + 1 >= node.max_rounds
         ):
             effective_target = node.default_to
-        self._execute_story_command(
-            AdvanceStoryTurn(
-                command_id=f"{command_id}:advance",
-                expected_revision=state.revision,
-                expected_node_id=node.id,
-                next_node_id=effective_target,
-            )
+        return AdvanceStoryTurn(
+            command_id=f"{command_id}:advance",
+            expected_revision=state.revision,
+            expected_node_id=node.id,
+            next_node_id=effective_target,
         )
-        return effective_target
 
     def _repair_response(
         self,
