@@ -23,6 +23,7 @@ from .characters import (
     StoryCastApplicationService,
 )
 from .persistence import JsonGlobalStoryProgressStore, JsonStorySessionRepository
+from .history_projection import project_story_history
 from .project_loader import load_story_project
 from .session import StorySession
 from .scene import ConfigSceneModel, SceneOrchestrator
@@ -123,12 +124,17 @@ def start_or_recover_story_session(
     )
     recovering = repository.load() is not None
     if not recovering:
+        stream = getattr(state, "chat_stream", None)
+        snapshot = (
+            stream.get_snapshot(state.chat_session.get("sessionId")) if stream else None
+        )
         session = StorySession.create(
             runtime,
             flags,
             command_id=command_id,
             repository=repository,
             global_store=global_store,
+            history_entries=(snapshot or {}).get("historyEntries", ()),
             cast_plan_preparer=cast_service.prepare,
             cast_plan_committed=cast_service.committed,
             cast_resources_rebuilder=cast_service.rebuild,
@@ -147,6 +153,8 @@ def start_or_recover_story_session(
             session.active_branch.state.cast_state.active_character_ids
         )
     session.owner_history_path = str(Path(history_path).resolve(strict=False))
+    if recovering:
+        project_story_history(session)
     state.story_session = session
     state.story_cast_service = cast_service
     state.story_scene_service = SceneOrchestrator(
@@ -270,6 +278,8 @@ def publish_story_transition(
     resource_patch = _approved_resource_patch(state)
     live_patch.update(resource_patch)
     events: list[dict[str, Any]] = []
+    if history_entries is None and "historyEntries" in live_patch:
+        history_entries = live_patch["historyEntries"]
     if "backgroundPath" in live_patch:
         events.append({"type": "background.change", "url": live_patch["backgroundPath"]})
     if history_entries is not None:

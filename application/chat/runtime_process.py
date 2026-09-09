@@ -68,6 +68,7 @@ from application.story.coordinator import (
     story_snapshot_patch,
 )
 from application.story.session import StoryTurnCancelledError
+from application.story.history_projection import project_story_history
 from config.feature_flags import FeatureFlag
 from core.story import SelectChoice
 from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
@@ -677,6 +678,9 @@ def _history_entries_from_snapshot(snapshot: dict[str, Any] | None) -> list[dict
 
 
 def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
+    story_session = bound_story_session(state)
+    if story_session is not None:
+        return [dict(item) for item in story_session.active_branch.history_entries]
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
     if session_id and chat_stream is not None:
@@ -1421,17 +1425,20 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
                     submitted_text,
                     command_id=command_id,
                     message_id=f"message:{command_id}",
+                    user_name=_chat_user_display_name_from_snapshot(state),
                 )
             except StoryTurnCancelledError as error:
                 raise ValueError(str(error)) from error
-            history_entries = _record_scene_turn_history(
-                state,
-                submitted_text,
-                result.dialogue,
-            )
             session = bound_story_session(state)
             if session is not None:
-                session.replace_history_entries(history_entries)
+                project_story_history(session)
+                history_entries = [
+                    dict(item) for item in session.active_branch.history_entries
+                ]
+            else:
+                history_entries = _record_scene_turn_history(
+                    state, submitted_text, result.dialogue
+                )
             dialogue = result.dialogue[-1]
             presentation_events = (
                 *tuple(dict(item) for item in result.presentation_events),

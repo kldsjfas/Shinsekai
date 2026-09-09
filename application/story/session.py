@@ -10,6 +10,7 @@ from typing import Any
 
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
+    AdvanceStoryTurn,
     EffectSpec,
     CastResolutionPlan,
     RuntimeCommand,
@@ -41,6 +42,7 @@ from .persistence import (
     story_state_to_payload,
 )
 from .protocol import story_chat_snapshot, story_event_messages, story_state_view
+from .scene_commit import SceneTurnCommit, commit_scene_turn
 
 
 FailureInjector = Callable[[str], None]
@@ -505,44 +507,21 @@ class StorySession:
         result_payload: Mapping[str, Any],
         history_entries: Sequence[Mapping[str, Any]] | None = None,
         scene_scope: SceneTurnScope | None = None,
+        advance_command: AdvanceStoryTurn | None = None,
+        user_name: str = "你",
     ) -> Mapping[str, Any]:
         with self._lock:
             self._require_enabled()
             if scene_scope is not None:
                 self._require_scene_scope(scene_scope)
-            branch = self.active_branch
-            existing = branch.idempotency.lookup(command)
-            if existing is not None:
-                return existing.ack
-            if history_entries is not None:
-                branch.history_entries = _history_entries(history_entries)
-            record = branch.idempotency.record(
+            return commit_scene_turn(
+                self,
                 command,
-                accepted=True,
-                resulting_revision=int(
-                    result_payload.get("revision") or branch.state.revision
-                ),
-                event_ids=(),
-                ack={"sceneTurn": dict(result_payload)},
+                result_payload=result_payload,
+                history_entries=history_entries,
+                advance_command=advance_command,
+                user_name=user_name,
             )
-            branch.generation += 1
-            branch.checkpoints.append(
-                StoryCheckpoint(
-                    generation=branch.generation,
-                    message_count=len(branch.history_entries),
-                    state=branch.state,
-                    head_event_id=branch.head_event_id,
-                    event_count=len(branch.events),
-                    history_entries=branch.history_entries,
-                    idempotency_payload=tuple(
-                        MappingProxyType(item)
-                        for item in branch.idempotency.to_payload()
-                    ),
-                )
-            )
-            branch.checkpoints = branch.checkpoints[-128:]
-            self._save()
-            return record.ack
 
     def replace_history_entries(
         self,
@@ -595,7 +574,12 @@ class StorySession:
                 self.active_branch.state,
                 self.global_progress,
             )
-            return story_chat_snapshot(view)
+            return {
+                **story_chat_snapshot(view),
+                "historyEntries": [
+                    dict(item) for item in self.active_branch.history_entries
+                ],
+            }
 
     def to_payload(self) -> dict[str, Any]:
         with self._lock:
@@ -634,12 +618,13 @@ class StorySession:
     def _commit_result(
         self,
         branch: StoryBranch,
-        command: StartStory | RuntimeCommand,
+        command: StartStory | RuntimeCommand | SceneTurnCommand,
         events: tuple[StoryEvent, ...],
         global_effects: tuple[EffectSpec, ...],
         *,
         state: StoryState | None = None,
         cast_plans: tuple[CastResolutionPlan, ...] = (),
+        scene_turn: SceneTurnCommit | None = None,
     ) -> StorySessionAck:
         if state is not None:
             branch.state = state
@@ -692,13 +677,16 @@ class StorySession:
                 MappingProxyType(item) for item in story_event_messages(events)
             ),
         )
-        branch.idempotency.record(
-            command,
-            accepted=True,
-            resulting_revision=branch.state.revision,
-            event_ids=ack.event_ids,
-            ack=ack.to_payload(),
-        )
+        if scene_turn is None or command is not scene_turn.command:
+            branch.idempotency.record(
+                command,
+                accepted=True,
+                resulting_revision=branch.state.revision,
+                event_ids=ack.event_ids,
+                ack=ack.to_payload(),
+            )
+        if scene_turn is not None:
+            scene_turn.record(branch, ack)
         branch.checkpoints.append(
             StoryCheckpoint(
                 generation=branch.generation,
@@ -714,6 +702,8 @@ class StorySession:
         )
         branch.checkpoints = branch.checkpoints[-128:]
         self._save()
+        if scene_turn is not None:
+            scene_turn.committed = True
         self.failure_injector("after_session_commit")
         self.flush_global_outbox()
         if self.cast_plan_committed is not None:
