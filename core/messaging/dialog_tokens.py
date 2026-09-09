@@ -105,6 +105,12 @@ def match_system_dialog(cc, name: str) -> bool:
     return False
 
 
+def match_scene_dialog(cc, name: str) -> bool:
+    """Match scene tokens after the same OpenCC normalization as handlers."""
+
+    return _cc_match(cc, name, SCENE_ALIASES)
+
+
 # Compatibility aliases for integrations using the former TTS-stage names.
 match_cot_tts = match_cot_dialog
 match_system_dialog_tts = match_system_dialog

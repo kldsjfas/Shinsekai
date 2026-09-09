@@ -80,6 +80,7 @@ class AppRuntime:
     presentation_queue: Any
     text_processor: Any  # TextProcessor
     opencc: Any  # OpenCC
+    background: Any = None
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     ui_playback: UiPlaybackBridge = field(default_factory=UiPlaybackBridge)
     chat_turn_service: ChatTurnService = field(default_factory=ChatTurnService)
@@ -131,7 +132,7 @@ def resolve_pending_tool_confirmation(
 def emit_presentation_message(
     character_name: str,
     speech: str,
-    sprite: str,
+    sprite: str | None,
     audio_path: str,
     *,
     is_system_message: bool = False,

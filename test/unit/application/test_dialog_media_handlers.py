@@ -21,7 +21,7 @@ class TestCharacterMediaHandler:
         msg = LLMDialogMessage(name="TestChar", text="Hello", asset_id="0")
         assert handler.can_handle(msg) is True
 
-    def test_none_asset_id_uses_default_sprite_and_continues_tts(
+    def test_none_asset_id_skips_sprite_update_and_continues_tts(
         self, mock_app_runtime
     ):
         runtime = mock_app_runtime
@@ -36,7 +36,7 @@ class TestCharacterMediaHandler:
         output = runtime.presentation_queue.get_nowait()
         assert output.name == "TestChar"
         assert output.text == "Hello"
-        assert output.asset_id == "-1"
+        assert output.asset_id is None
         assert output.audio_path == "voice.wav"
         assert output.is_system_message is False
         assert output.effect == ""

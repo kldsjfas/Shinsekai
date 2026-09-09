@@ -112,6 +112,7 @@ def command_runtime() -> SimpleNamespace:
         fork=Mock(),
         switch=Mock(),
         rename=Mock(),
+        replay_media=Mock(),
     )
     tts_manager = SimpleNamespace(set_language=Mock())
     shutdown = Mock()
@@ -376,6 +377,10 @@ def test_reverts_history_inside_application(monkeypatch, command_runtime) -> Non
         window=runtime.dispatcher.history_presenter,
     )
     assert runtime.turn_service.calls[-1] == ("cancel", None)
+    runtime.branch_manager.replay_media.assert_called_once_with(
+        runtime.llm_manager.get_messages()
+    )
+    runtime.branch_manager.persist.assert_called_once_with()
     assert runtime.ui_calls[-2:] == [
         ("clear-options", None),
         ("sync-history", None),

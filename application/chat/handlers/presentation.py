@@ -14,7 +14,6 @@ from typing import Any, List
 from i18n import tr as tr_i18n
 
 from ai.asr.asr_adapter import get_asr_log
-from config.config_manager import ConfigManager
 from application.runtime.context import get_app_runtime
 from core.messaging.dialog_tokens import (
     SYSTEM_UI_SKIP,
@@ -28,15 +27,12 @@ from core.messaging.dialog_tokens import (
 from sdk.handlers import UIOutputMessageHandler
 from sdk.messages import PresentationMessage
 
-_config = ConfigManager()
+def _ui() -> Any:
+    return get_app_runtime().ui_update_manager
 
 
 def get_character_by_name(name: str):
-    return _config.get_character_by_name(name)
-
-
-def _ui() -> Any:
-    return get_app_runtime().ui_update_manager
+    return get_app_runtime().config.get_character_by_name(name)
 
 
 def _play() -> Any:
@@ -176,6 +172,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         super().__init__()
         self._last_character = None
         self._last_sprite = None
+        self._last_catalog_by_character: dict[str, tuple[str, ...]] = {}
 
     def can_handle(self, out: PresentationMessage) -> bool:
         return not out.is_system_message
@@ -201,10 +198,26 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         character_config = get_character_by_name(character_name)
         if character_config:
             try:
-                if self._last_character != character_name or self._last_sprite != sprite_id:
+                catalog = tuple(
+                    str(
+                        sprite.get("path", "")
+                        if isinstance(sprite, dict)
+                        else getattr(sprite, "path", "")
+                    )
+                    for sprite in (getattr(character_config, "sprites", None) or [])
+                )
+                catalog_changed = (
+                    self._last_catalog_by_character.get(character_name) != catalog
+                )
+                if sprite_id is not None and (
+                    catalog_changed
+                    or self._last_character != character_name
+                    or self._last_sprite != sprite_id
+                ):
                     ui.update_sprite(character_name, int(sprite_id) - 1)
                     self._last_character = character_name
                     self._last_sprite = sprite_id
+                    self._last_catalog_by_character[character_name] = catalog
             except (ValueError, TypeError, IndexError) as e:
                 print(f"PresentationWorker: 立绘更新跳过（索引或数据无效）: {e}")
 

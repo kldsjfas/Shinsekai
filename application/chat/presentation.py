@@ -22,6 +22,7 @@ class ChatPresentationAssets:
     background_sprites: list[Any]
     bgm_paths: list[str]
     transparent: bool
+    background: Any | None = None
 
 
 class StreamingHistoryPresenter:
@@ -64,6 +65,7 @@ def load_presentation_assets(
             background_sprites=list(getattr(background, "sprites", None) or []),
             bgm_paths=list(getattr(background, "bgm_list", None) or []),
             transparent=False,
+            background=background,
         )
     except Exception:
         return ChatPresentationAssets([], [], False)
@@ -82,6 +84,7 @@ def prepare_initial_presentation(
     ready_notification: str,
     publish_branch_tree: Any,
     translate: Any,
+    replay_media: Any = None,
 ) -> None:
     """Restore background, BGM, dialog, options, and initial character sprite."""
 
@@ -105,6 +108,7 @@ def prepare_initial_presentation(
             presenter=StreamingHistoryPresenter(ui_updates),
             config=config,
             tr_i18n=translate,
+            replay_media=replay_media,
         )
 
     if not messages:
