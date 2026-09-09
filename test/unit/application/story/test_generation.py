@@ -11,7 +11,6 @@ import pytest
 import yaml
 
 from application.runtime.tasks import _create_task, _get_task
-from application.story.coordinator import apply_story_resource_bindings
 from application.story.generation import (
     ConfigStoryAuthorModel,
     StoryDraftValidator,
@@ -38,58 +37,66 @@ def enabled_flags() -> FeatureFlagConfigManager:
 
 def stage_artifacts(*, two_endings: bool = False) -> dict[str, dict[str, Any]]:
     source = campus_mystery_source()
-    narrative = deepcopy(source["narrativeGraph"])
+    narrative = {
+        "startNodeId": "school-gate",
+        "nodes": [
+            {
+                "id": "school-gate",
+                "title": "School gate",
+                "type": "limited_turn_node",
+                "instruction": "Ling invites the player to investigate the old school.",
+                "maxRounds": 2,
+                "transitions": [
+                    {"to": "school-lobby", "when": "The player agrees to enter"}
+                ],
+                "defaultTo": "school-lobby",
+            },
+            {
+                "id": "school-lobby",
+                "title": "School lobby",
+                "type": "free_chat_node",
+                "instruction": "Let the player investigate and talk freely.",
+                "transitions": [
+                    {"to": "truth-ending", "when": "The player finds the truth"}
+                ],
+            },
+            {
+                "id": "truth-ending",
+                "title": "Truth",
+                "type": "ending_node",
+            },
+        ],
+    }
     if two_endings:
         narrative["nodes"].append(
             {
                 "id": "leave-ending",
                 "title": "Leave",
-                "type": "ending",
-                "commitment": "draft",
-                "castPolicy": {
-                    "mode": "fixed",
-                    "required": ["ling"],
-                    "constraints": {"minActive": 1, "maxActive": 2},
-                    "fallback": {"onMissingRole": "error", "onLoadFailure": "error"},
-                },
+                "type": "ending_node",
             }
         )
-        narrative["nodes"][0]["choices"].append(
-            {
-                "id": "leave-now",
-                "label": "Leave",
-                "effects": [],
-                "goto": "leave-ending",
-            }
+        narrative["nodes"][0]["transitions"].append(
+            {"to": "leave-ending", "when": "The player refuses to enter"}
         )
     characters = deepcopy(source["cast"])
     for character in characters["characters"]:
         character["name"] = character["id"]
         character["responsibility"] = "Carries a required story role"
     return {
-        "requirements": {
+        "foundation": {
             "id": source["id"],
             "title": source["title"],
             "language": "zh-CN",
             "estimatedMinutes": 20,
             "assumptions": ["The player wants a mystery"],
-            "requirements": {"endings": 2 if two_endings else 1},
-        },
-        "bible": {
             "premise": "A mystery at an old school building.",
             "themes": ["trust"],
             "worldRules": ["Evidence is physical"],
             "immutableFacts": ["Ling arrived first"],
             "secrets": ["The key is a replica"],
         },
-        "characters": characters,
-        "state": {
-            "variables": deepcopy(source["variables"]),
-            "semanticSignals": deepcopy(source["semanticSignals"]),
-        },
+        "characters": {"characters": characters["characters"]},
         "narrative": narrative,
-        "logic": deepcopy(source["logicGraph"]),
-        "resources": {"bindings": {}, "unresolved": []},
     }
 
 
@@ -104,6 +111,7 @@ class ScriptedModel:
         self.fail_once_at = fail_once_at
         self.failed = False
         self.calls: list[str] = []
+        self.requests: list[Mapping[str, Any]] = []
 
     def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         operation = str(request["operation"])
@@ -111,6 +119,7 @@ class ScriptedModel:
             raise AssertionError("valid fixture must not enter repair")
         stage = str(request["stage"])
         self.calls.append(stage)
+        self.requests.append(request)
         if stage == self.fail_once_at and not self.failed:
             self.failed = True
             raise RuntimeError("transient model failure")
@@ -120,7 +129,10 @@ class ScriptedModel:
 class RepairingModel(ScriptedModel):
     def __init__(self, artifacts: Mapping[str, Mapping[str, Any]]) -> None:
         super().__init__(artifacts)
-        self.valid_ending = deepcopy(stage_artifacts()["narrative"]["nodes"][2])
+        self.valid_opening = deepcopy(stage_artifacts()["narrative"]["nodes"][0])
+        self.valid_opening["transitions"].append(
+            {"to": "orphan-ending", "when": "The player leaves immediately"}
+        )
 
     def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if request["operation"] == "repair":
@@ -130,8 +142,8 @@ class RepairingModel(ScriptedModel):
                 "operations": [
                     {
                         "op": "replace-node",
-                        "nodeId": "truth-ending",
-                        "value": deepcopy(self.valid_ending),
+                        "nodeId": "school-gate",
+                        "value": deepcopy(self.valid_opening),
                     }
                 ],
             }
@@ -160,9 +172,19 @@ def test_pipeline_persists_intermediate_artifacts_and_compiled_draft(
     assert result["assumptions"] == ["The player wants a mystery"]
     assert result["validation"]["valid"] is True
     assert result["validation"]["endingCoverage"] == 1
-    assert result["cost"]["requests"] == 7
+    assert result["cost"]["requests"] == 3
     assert Path(result["draftPath"]).is_file()
-    assert repository.load_artifact("story-task", StoryGenerationStage.BIBLE)["secrets"]
+    assert repository.load_artifact("story-task", StoryGenerationStage.FOUNDATION)[
+        "secrets"
+    ]
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["variables"] == {}
+    assert source["semanticSignals"] == []
+    assert source["logicGraph"] == {"version": 1, "nodes": [], "edges": []}
+    assert source["cast"]["initialCast"] == [
+        item["id"] for item in source["cast"]["characters"]
+    ]
+    assert all("castPolicy" not in node for node in source["narrativeGraph"]["nodes"])
 
 
 def test_failed_task_resumes_from_latest_stage(tmp_path: Path) -> None:
@@ -175,14 +197,14 @@ def test_failed_task_resumes_from_latest_stage(tmp_path: Path) -> None:
     failed = service.get(task["id"])
     assert failed["status"] == "failed"
     assert failed["currentStage"] == "narrative"
-    assert failed["completedStages"] == ["requirements", "bible", "characters", "state"]
+    assert failed["completedStages"] == ["foundation", "characters"]
 
     result = service.run(task["id"], resume=True)
 
     assert result["status"] == "succeeded"
-    assert model.calls.count("requirements") == 1
+    assert model.calls.count("foundation") == 1
     assert model.calls.count("narrative") == 2
-    assert repository.load_artifact(task["id"], StoryGenerationStage.STATE)
+    assert repository.load_artifact(task["id"], StoryGenerationStage.CHARACTERS)
 
 
 def test_cancel_and_partial_regeneration_are_checkpoint_safe(tmp_path: Path) -> None:
@@ -192,20 +214,20 @@ def test_cancel_and_partial_regeneration_are_checkpoint_safe(tmp_path: Path) -> 
 
     def cancel_after_first(update: Mapping[str, Any]) -> None:
         generated = update.get("generationTask", {})
-        if generated.get("completedStages") == ["requirements"]:
+        if generated.get("completedStages") == ["foundation"]:
             service.cancel(task["id"])
 
     with pytest.raises(StoryGenerationCancelled):
         service.run(task["id"], on_progress=cancel_after_first)
     cancelled = service.get(task["id"])
     assert cancelled["status"] == "cancelled"
-    assert cancelled["completedStages"] == ["requirements"]
+    assert cancelled["completedStages"] == ["foundation"]
 
     completed = service.run(task["id"], resume=True)
     assert completed["status"] == "succeeded"
     reset = service.regenerate_from(task["id"], StoryGenerationStage.NARRATIVE)
     assert reset["status"] == "queued"
-    assert reset["completedStages"] == ["requirements", "bible", "characters", "state"]
+    assert reset["completedStages"] == ["foundation", "characters"]
     assert reset["draftPath"] == ""
 
 
@@ -242,10 +264,51 @@ def test_bounded_patch_rejects_escape_and_preserves_identity() -> None:
             base_version=1,
         )
 
+    with pytest.raises(StoryGenerationError, match="derived path"):
+        applier.apply(
+            source,
+            {
+                "baseVersion": 1,
+                "operations": [
+                    {"op": "replace", "path": "/cast/initialCast", "value": []}
+                ],
+            },
+            base_version=1,
+        )
+
+    with pytest.raises(StoryGenerationError, match="derived path"):
+        applier.apply(
+            source,
+            {
+                "baseVersion": 1,
+                "operations": [{"op": "replace", "path": "/metadata", "value": {}}],
+            },
+            base_version=1,
+        )
+
+    source["metadata"]["backgrounds"] = ["school-yard"]
+    with pytest.raises(StoryGenerationError, match="derived path"):
+        applier.apply(
+            source,
+            {
+                "baseVersion": 1,
+                "operations": [
+                    {
+                        "op": "replace",
+                        "path": "/metadata/backgrounds",
+                        "value": ["unknown-background"],
+                    }
+                ],
+            },
+            base_version=1,
+        )
+
 
 def test_directed_repair_loop_applies_only_a_bounded_patch(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
-    artifacts["narrative"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    artifacts["narrative"]["nodes"].append(
+        {"id": "orphan-ending", "title": "Orphan", "type": "ending_node"}
+    )
     model = RepairingModel(artifacts)
     service, _ = service_at(tmp_path, model)
 
@@ -256,23 +319,36 @@ def test_directed_repair_loop_applies_only_a_bounded_patch(tmp_path: Path) -> No
     assert result["repairAttempts"] == 1
     assert result["validation"]["valid"] is True
     assert model.calls[-1] == "repair"
-    assert result["cost"]["requests"] == 8
+    assert result["cost"]["requests"] == 4
 
 
-def test_resource_bindings_must_use_supplied_catalog_ids(tmp_path: Path) -> None:
+def test_node_backgrounds_must_use_supplied_names(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
-    artifacts["resources"]["bindings"] = {"openingBackground": "unknown-background"}
+    for node in artifacts["narrative"]["nodes"]:
+        node["background"] = "unknown-background"
     model = ScriptedModel(artifacts)
     service, _ = service_at(tmp_path, model)
     task = service.create(
-        "Bind only supplied resources.",
+        "Choose only supplied backgrounds.",
         task_id="resource-task",
         resource_catalog={"backgrounds": [{"id": "known-background"}]},
     )
 
-    with pytest.raises(StoryGenerationError, match="not in the supplied catalog"):
+    with pytest.raises(StoryGenerationError, match="selected unknown background"):
         service.run(task["id"])
-    assert service.get(task["id"])["currentStage"] == "resources"
+    assert service.get(task["id"])["currentStage"] == "narrative"
+
+
+def test_character_stage_is_only_a_story_wide_list(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["characters"]["initialCast"] = ["ling"]
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Keep casting out of generation.", task_id="cast-list-task")
+
+    with pytest.raises(StoryGenerationError, match="only accepts the story-wide list"):
+        service.run(task["id"])
+    assert service.get(task["id"])["currentStage"] == "characters"
 
 
 def test_validator_detects_secret_leak() -> None:
@@ -281,11 +357,27 @@ def test_validator_detects_secret_leak() -> None:
         "hint": "The key is a replica"
     }
     report = StoryDraftValidator().validate(
-        source, story_bible={"secrets": ["The key is a replica"]}
+        source, foundation={"secrets": ["The key is a replica"]}
     )
 
     assert report.valid is False
     assert "secret.exposed" in {item.code for item in report.issues}
+
+
+def test_simple_node_instruction_can_reveal_a_foundation_secret(
+    tmp_path: Path,
+) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"][1][
+        "instruction"
+    ] = "The key is a replica. Reveal this after the player examines it."
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Reveal a secret later.", task_id="secret-reveal-task")
+
+    result = service.run(task["id"])
+
+    assert result["status"] == "succeeded"
 
 
 def test_fixed_eval_reports_pass_rate_coverage_and_cost(tmp_path: Path) -> None:
@@ -299,7 +391,7 @@ def test_fixed_eval_reports_pass_rate_coverage_and_cost(tmp_path: Path) -> None:
 
     assert report["structuralPassRate"] == 1
     assert report["meanEndingCoverage"] == 1
-    assert report["generationCost"]["requests"] == 7
+    assert report["generationCost"]["requests"] == 3
 
 
 def test_flag_off_prevents_task_directory_creation(tmp_path: Path) -> None:
@@ -345,8 +437,8 @@ def test_author_model_uses_stateless_adapter_calls(monkeypatch) -> None:
     model = ConfigStoryAuthorModel(enabled_flags(), config_manager=SimpleNamespace())
     monkeypatch.setattr(model, "_llm_manager", lambda: manager)
 
-    first = model.complete({"synopsis": "task-a-secret", "stage": "bible"})
-    second = model.complete({"synopsis": "task-b-public", "stage": "bible"})
+    first = model.complete({"synopsis": "task-a-secret", "stage": "foundation"})
+    second = model.complete({"synopsis": "task-b-public", "stage": "foundation"})
 
     assert first["artifact"]["ok"] is True
     assert second["artifact"]["ok"] is True
@@ -365,7 +457,7 @@ def test_save_merges_cancel_requested_from_disk(tmp_path: Path) -> None:
             "id": "cancel-merge",
             "status": "running",
             "cancelRequested": False,
-            "currentStage": "bible",
+            "currentStage": "foundation",
         }
     )
     cancelled = dict(task)
@@ -382,7 +474,9 @@ def test_save_merges_cancel_requested_from_disk(tmp_path: Path) -> None:
 
 def test_applied_repair_is_checkpointed_before_attempt_count(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
-    artifacts["narrative"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    artifacts["narrative"]["nodes"].append(
+        {"id": "orphan-ending", "title": "Orphan", "type": "ending_node"}
+    )
     model = NoOpRepairModel(artifacts)
     service, repository = service_at(tmp_path, model)
     task = service.create("Checkpoint repairs.", task_id="repair-checkpoint")
@@ -400,60 +494,41 @@ def test_applied_repair_is_checkpointed_before_attempt_count(tmp_path: Path) -> 
         service.run(task["id"], resume=True)
     assert "repair" not in model.calls
     assert (
-        repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)["nodes"][0][
-            "title"
-        ]
+        repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)["nodes"][
+            0
+        ]["title"]
         == "Still broken"
     )
 
 
-def test_applied_repair_survives_downstream_regeneration(tmp_path: Path) -> None:
+def test_available_backgrounds_are_retained_without_bindings(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
-    artifacts["narrative"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
-    model = RepairingModel(artifacts)
-    service, repository = service_at(tmp_path, model)
-    task = service.create("Keep repaired narrative.", task_id="repair-keep")
-    result = service.run(task["id"])
-    assert result["status"] == "succeeded"
-
-    repaired = repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)
-    assert repaired["nodes"][2]["castPolicy"]["required"] == ["ling"]
-    reset = service.regenerate_from(task["id"], StoryGenerationStage.LOGIC)
-    assert reset["status"] == "queued"
-    kept = repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)
-    assert kept["nodes"][2]["castPolicy"]["required"] == ["ling"]
-
-
-def test_resource_bindings_are_retained_after_parse(tmp_path: Path) -> None:
-    artifacts = stage_artifacts()
-    artifacts["resources"]["bindings"] = {"openingBackground": "school-yard"}
+    for node in artifacts["narrative"]["nodes"]:
+        node["background"] = "school-yard"
     model = ScriptedModel(artifacts)
     service, _ = service_at(tmp_path, model)
     task = service.create(
-        "Bind opening background.",
+        "Choose a background while generating nodes.",
         task_id="binding-task",
-        resource_catalog={"backgrounds": [{"id": "school-yard"}]},
+        resource_catalog={"backgrounds": [{"name": "school-yard"}]},
     )
     result = service.run(task["id"])
     source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
     project = parse_story_project(source)
-    assert project.metadata.resource_bindings["openingBackground"] == "school-yard"
-
-    state = SimpleNamespace(
-        chat_session={},
-        config_manager=SimpleNamespace(
-            get_background_by_name=lambda name: SimpleNamespace(
-                sprites=[SimpleNamespace(path=f"media/{name}.png")]
-            )
-        ),
-    )
-    patch = apply_story_resource_bindings(state, project.metadata.resource_bindings)
-    assert state.chat_session["backgroundName"] == "school-yard"
-    assert patch["backgroundPath"] == "media/school-yard.png"
+    assert project.metadata.backgrounds == ("school-yard",)
+    assert project.metadata.resource_bindings == {}
+    assert {node.background for node in project.narrative_graph.nodes} == {
+        "school-yard"
+    }
+    assert [request["resourceCatalog"] for request in model.requests] == [
+        {},
+        {},
+        {"backgrounds": ["school-yard"]},
+    ]
 
 
 def test_background_failure_writes_generation_task_snapshot(tmp_path: Path) -> None:
-    model = ScriptedModel(stage_artifacts(), fail_once_at="bible")
+    model = ScriptedModel(stage_artifacts(), fail_once_at="foundation")
     service, _ = service_at(tmp_path, model)
     generated = service.create("Show failure on the page.", task_id="ui-fail")
     state = SimpleNamespace(
@@ -469,17 +544,15 @@ def test_background_failure_writes_generation_task_snapshot(tmp_path: Path) -> N
         run_story_generation_background(state, bridge["id"], generated["id"])
     updated = _get_task(state, bridge["id"])
     assert updated["generationTask"]["status"] == "failed"
-    assert updated["generationTask"]["currentStage"] == "bible"
+    assert updated["generationTask"]["currentStage"] == "foundation"
 
 
 def test_validator_detects_secret_in_title_and_choice_label() -> None:
     source = campus_mystery_source()
     source["narrativeGraph"]["nodes"][0]["title"] = "The key is a replica"
-    source["narrativeGraph"]["nodes"][0]["choices"][0]["label"] = (
-        "The key is a replica"
-    )
+    source["narrativeGraph"]["nodes"][0]["choices"][0]["label"] = "The key is a replica"
     report = StoryDraftValidator().validate(
-        source, story_bible={"secrets": ["The key is a replica"]}
+        source, foundation={"secrets": ["The key is a replica"]}
     )
 
     assert report.valid is False
@@ -495,7 +568,7 @@ def test_regenerate_is_rejected_while_a_run_is_active(tmp_path: Path) -> None:
 
     def reject_during_first_checkpoint(update: Mapping[str, Any]) -> None:
         generated = update.get("generationTask", {})
-        if generated.get("completedStages") == ["requirements"]:
+        if generated.get("completedStages") == ["foundation"]:
             with pytest.raises(StoryGenerationError, match="already running"):
                 service.regenerate_from(task["id"], StoryGenerationStage.NARRATIVE)
 
@@ -533,5 +606,5 @@ def test_failed_eval_includes_spent_cost(tmp_path: Path) -> None:
     )
 
     assert report["cases"][0]["passed"] is False
-    assert report["generationCost"]["requests"] == 4
+    assert report["generationCost"]["requests"] == 2
     assert report["generationCost"]["estimatedTokens"] > 0

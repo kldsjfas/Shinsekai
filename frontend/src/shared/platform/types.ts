@@ -923,12 +923,16 @@ export type ChatOption = string | ChatStoryOption;
 
 export interface ChatStoryState {
   activeCast: Array<{ id: string; roles: string[] }>;
+  background?: string | null;
   castRevision: number;
   currentNodeId: string;
   currentNodeTitle: string;
+  currentNodeType?: string;
   ending?: { id: string; title: string } | null;
   lastEvent?: { payload: Record<string, unknown>; revision?: number; type: string };
   objectives: unknown[];
+  maxRounds?: number | null;
+  nodeTurnCount?: number;
   options: ChatStoryOption[];
   revision: number;
   storyId: string;
@@ -1219,14 +1223,7 @@ export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
 
-export type StoryGenerationStage =
-  | "requirements"
-  | "bible"
-  | "characters"
-  | "state"
-  | "narrative"
-  | "logic"
-  | "resources";
+export type StoryGenerationStage = "foundation" | "characters" | "narrative";
 
 export interface StoryGenerationValidationIssue {
   code: string;

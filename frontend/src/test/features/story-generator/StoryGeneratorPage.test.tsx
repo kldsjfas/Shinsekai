@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StoryGeneratorPage } from "../../../features/story-generator/StoryGeneratorPage";
@@ -8,6 +9,25 @@ const startStoryGeneration = vi.fn();
 const resumeStoryGeneration = vi.fn();
 const regenerateStoryGeneration = vi.fn();
 const cancelStoryGeneration = vi.fn();
+
+function renderPage() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <StoryGeneratorPage />
+    </QueryClientProvider>,
+  );
+}
+
+vi.mock("../../../entities/background/repository", () => ({
+  backgroundsQueryKey: ["backgrounds"],
+  listBackgrounds: vi.fn().mockResolvedValue([
+    { name: "旧校舍", sprites: [{ path: "school.png" }] },
+    { name: "空背景", sprites: [] },
+  ]),
+}));
 
 vi.mock("../../../entities/story/repository", () => ({
   startStoryGeneration: (...args: unknown[]) => startStoryGeneration(...args),
@@ -21,8 +41,8 @@ function generatedTask(status: StoryGenerationTask["status"] = "succeeded"): Sto
     artifactHashes: {},
     assumptions: ["以三幕结构展开"],
     cancelRequested: false,
-    completedStages: ["requirements", "bible", "characters", "state", "narrative", "logic", "resources"],
-    cost: { estimatedTokens: 1200, inputChars: 2400, outputChars: 1200, requests: 7 },
+    completedStages: ["foundation", "characters", "narrative"],
+    cost: { estimatedTokens: 1200, inputChars: 2400, outputChars: 1200, requests: 3 },
     createdAt: 1,
     currentStage: status === "succeeded" ? "complete" : "narrative",
     draftPath: status === "succeeded" ? "draft.json" : "",
@@ -53,12 +73,19 @@ describe("StoryGeneratorPage", () => {
 
   it("generates a draft and previews assumptions and validation", async () => {
     startStoryGeneration.mockResolvedValue(generatedTask());
-    render(<StoryGeneratorPage />);
+    renderPage();
 
     fireEvent.change(screen.getByRole("textbox", { name: "剧情梗概" }), { target: { value: "调查废弃校舍" } });
-    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+    const startButton = screen.getByRole("button", { name: "开始生成" });
+    await waitFor(() => expect(startButton).toBeEnabled());
+    fireEvent.click(startButton);
 
-    await waitFor(() => expect(startStoryGeneration).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(startStoryGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({ resourceCatalog: { backgrounds: ["旧校舍"] } }),
+        expect.anything(),
+      ),
+    );
     expect(await screen.findByText("以三幕结构展开")).toBeInTheDocument();
     expect(screen.getByText("已通过确定性校验")).toBeInTheDocument();
     expect(screen.getByText("100%")).toBeInTheDocument();
@@ -67,10 +94,12 @@ describe("StoryGeneratorPage", () => {
   it("resumes a failed task from its checkpoint", async () => {
     startStoryGeneration.mockResolvedValue(generatedTask("failed"));
     resumeStoryGeneration.mockResolvedValue(generatedTask());
-    render(<StoryGeneratorPage />);
+    renderPage();
 
     fireEvent.change(screen.getByRole("textbox", { name: "剧情梗概" }), { target: { value: "断点剧本" } });
-    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+    const startButton = screen.getByRole("button", { name: "开始生成" });
+    await waitFor(() => expect(startButton).toBeEnabled());
+    fireEvent.click(startButton);
     fireEvent.click(await screen.findByRole("button", { name: "从断点继续" }));
 
     await waitFor(() => expect(resumeStoryGeneration).toHaveBeenCalledWith("generation-1", expect.anything()));

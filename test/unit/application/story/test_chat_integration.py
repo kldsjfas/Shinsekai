@@ -85,7 +85,9 @@ class _ChatStream:
 
 
 class _SceneService:
-    def handle_free_text(self, text: str, *, command_id: str, message_id: str):
+    def handle_free_text(
+        self, text: str, *, command_id: str, message_id: str, user_name: str = "你"
+    ):
         return SceneTurnResult(
             command_id=command_id,
             revision=2,
@@ -94,7 +96,9 @@ class _SceneService:
         )
 
 
-def _state(*, enabled: bool, fork: bool = False, flowchart: bool = False) -> SimpleNamespace:
+def _state(
+    *, enabled: bool, fork: bool = False, flowchart: bool = False
+) -> SimpleNamespace:
     flags = FeatureFlagConfigManager(
         environ={},
         overrides={FeatureFlag.STORY_SYSTEM: enabled},
@@ -124,6 +128,29 @@ def _story_session(flags: FeatureFlagConfigManager) -> StorySession:
         StoryRuntime(program),
         flags,
         command_id="start-1",
+    )
+
+
+def _story_session_with_background(flags: FeatureFlagConfigManager) -> StorySession:
+    source = campus_mystery_source()
+    source["metadata"]["backgrounds"] = ["旧校舍"]
+    source["narrativeGraph"] = {
+        "startNodeId": "opening",
+        "nodes": [
+            {
+                "id": "opening",
+                "title": "旧校舍门口",
+                "type": "ending_node",
+                "background": "旧校舍",
+            }
+        ],
+    }
+    source["logicGraph"] = {"version": 1, "nodes": [], "edges": []}
+    program = StoryCompiler().compile(parse_story_project(source))
+    return StorySession.create(
+        StoryRuntime(program),
+        flags,
+        command_id="start-with-background",
     )
 
 
@@ -180,6 +207,24 @@ def test_story_snapshot_is_not_projected_onto_another_history(tmp_path) -> None:
 
     assert bound_story_session(state) is None
     assert story_snapshot_patch(state) == {}
+
+
+def test_story_snapshot_uses_background_selected_for_current_node() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session_with_background(
+        state.config_manager.feature_flags
+    )
+    state.config_manager.get_background_by_name = lambda name: SimpleNamespace(
+        sprites=[SimpleNamespace(path=f"media/{name}.png")]
+    )
+    state.chat_stream.media_url = lambda path: f"asset://{path}"
+
+    patch = story_snapshot_patch(state)
+
+    assert patch["story"]["background"] == "旧校舍"
+    assert patch["backgroundName"] == "旧校舍"
+    assert patch["backgroundPath"] == "asset://media/旧校舍.png"
+    assert state.chat_session["backgroundName"] == "旧校舍"
 
 
 def test_clearing_story_session_drops_memory_and_document(tmp_path) -> None:
@@ -262,9 +307,13 @@ def test_live_story_transition_publishes_approved_actor_resources() -> None:
         event for event in state.chat_stream.published if event["type"] == "sprite.show"
     )
     assert sprite_event["url"].startswith("/api/media?path=")
-    assert state.chat_stream.snapshot["sprites"][0]["path"].startswith("/api/media?path=")
+    assert state.chat_stream.snapshot["sprites"][0]["path"].startswith(
+        "/api/media?path="
+    )
     assert state.chat_stream.snapshot["actorContext"]["activeCharacterIds"] == ["ling"]
-    assert story_snapshot_patch(state)["sprites"][0]["path"].startswith("/api/media?path=")
+    assert story_snapshot_patch(state)["sprites"][0]["path"].startswith(
+        "/api/media?path="
+    )
 
 
 def test_fork_history_skips_story_transition_when_flag_is_off() -> None:
@@ -313,7 +362,9 @@ def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:
     assert snapshot["dialogText"] == "收到：你好"
     assert snapshot["characterName"] == "ling"
     assert snapshot["eventSeq"] > 0
-    assert any(event["type"] == "history.replace" for event in state.chat_stream.published)
+    assert any(
+        event["type"] == "history.replace" for event in state.chat_stream.published
+    )
     assert any(event["type"] == "dialog.end" for event in state.chat_stream.published)
     assert snapshot["historyEntries"][0]["role"] == "user"
     assert "你好" in snapshot["historyEntries"][0]["text"]
