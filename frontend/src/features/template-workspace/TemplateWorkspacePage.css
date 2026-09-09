@@ -1,0 +1,29 @@
+.template-workspace {
+  min-width: 0;
+}
+.template-workspace__tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--color-border);
+}
+.template-workspace__tabs button {
+  padding: 12px 20px;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.template-workspace__tabs button[aria-selected="true"] {
+  border-bottom-color: var(--color-accent-primary);
+  color: var(--color-accent-primary);
+  font-weight: 700;
+}
+.template-workspace [hidden] {
+  display: none;
+}
+.template-workspace .story-generator-page {
+  padding-top: 0;
+}
