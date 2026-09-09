@@ -1,3 +1,4 @@
+import { Button, Select, TextArea } from "../../../shared/ui";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { backgroundsQueryKey, listBackgrounds } from "../../../entities/background/repository";
@@ -17,11 +18,13 @@ export function StorySetupForm({
   const backgrounds = useQuery({ queryKey: backgroundsQueryKey, queryFn: listBackgrounds });
   const template = templates.find((item) => item.id === templateId);
   return (
-    <section className="story-generator-card" aria-labelledby="story-setup-title">
-      <h2 id="story-setup-title">1. 选择模板，确定故事</h2>
+    <section className="section" aria-labelledby="story-setup-title">
+      <h2 className="section__title" id="story-setup-title">
+        1. 选择模板，确定故事
+      </h2>
       <label className="story-setup-field">
         故事模板
-        <select
+        <Select
           aria-label="故事模板"
           value={templateId}
           disabled={pending}
@@ -37,12 +40,12 @@ export function StorySetupForm({
               {item.name}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
-      <p>模板提供故事起点。你可以在下面调整人物、冲突和结局方向，原模板会保留。</p>
+      <p className="section__description">模板提供故事起点。你可以在下面调整人物、冲突和结局方向，原模板会保留。</p>
       <label className="story-setup-field">
         剧情梗概
-        <textarea
+        <TextArea
           aria-label="剧情梗概"
           disabled={pending}
           maxLength={20000}
@@ -52,7 +55,7 @@ export function StorySetupForm({
           placeholder="选择模板后，在这里调整希望发生的故事……"
         />
       </label>
-      <p>
+      <p className="section__description">
         可用地点：
         {backgrounds.isPending
           ? "加载中…"
@@ -62,15 +65,16 @@ export function StorySetupForm({
               .join("、") || "暂无背景，生成时将自由描述地点"}
       </p>
       {backgrounds.isError && (
-        <p role="alert">
+        <p className="section__description" role="alert">
           地点加载失败。
-          <button type="button" onClick={() => void backgrounds.refetch()}>
+          <Button type="button" onClick={() => void backgrounds.refetch()}>
             重试
-          </button>
+          </Button>
         </p>
       )}
       <div className="story-generator-actions">
-        <button
+        <Button
+          variant="primary"
           type="button"
           disabled={pending || !template || !synopsis.trim() || !backgrounds.isSuccess}
           onClick={() =>
@@ -88,7 +92,7 @@ export function StorySetupForm({
           }
         >
           {pending ? "生成中…" : "开始生成"}
-        </button>
+        </Button>
         <small>各阶段完成后可查看内容。</small>
       </div>
     </section>

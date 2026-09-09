@@ -1,3 +1,4 @@
+import { SegmentedTabs } from "../../shared/ui/SegmentedTabs";
 import { lazy, Suspense, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import "./TemplateWorkspacePage.css";
@@ -26,40 +27,18 @@ export function TemplateWorkspacePage() {
   };
   return (
     <div className="template-workspace">
-      <div className="template-workspace__tabs" role="tablist" aria-label="创作模式">
-        {modes.map((item, index) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            id={`mode-${item.id}`}
-            aria-controls={`panel-${item.id}`}
-            aria-selected={mode === item.id}
-            tabIndex={mode === item.id ? 0 : -1}
-            onClick={() => select(item.id)}
-            onKeyDown={(event) => {
-              const next =
-                event.key === "Home"
-                  ? 0
-                  : event.key === "End"
-                    ? 1
-                    : ["ArrowLeft", "ArrowRight"].includes(event.key)
-                      ? 1 - index
-                      : null;
-              if (next === null) return;
-              event.preventDefault();
-              select(modes[next].id);
-              document.getElementById(`mode-${modes[next].id}`)?.focus();
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        ariaLabel="创作模式"
+        className="template-workspace__tabs"
+        idPrefix="mode"
+        items={modes}
+        value={mode}
+        onChange={select}
+      />
       {modes.map((item) => (
         <div
           key={item.id}
-          id={`panel-${item.id}`}
+          id={`mode-panel-${item.id}`}
           role="tabpanel"
           aria-labelledby={`mode-${item.id}`}
           hidden={mode !== item.id}

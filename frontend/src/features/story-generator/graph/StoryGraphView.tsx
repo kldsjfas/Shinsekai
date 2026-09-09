@@ -1,3 +1,4 @@
+import { Button } from "../../../shared/ui";
 import { useId, useMemo, useState } from "react";
 import type { StoryGraph } from "../../../shared/platform/storyPreviewTypes";
 import { layoutStoryGraph, NODE_HEIGHT, NODE_WIDTH } from "./layout";
@@ -40,22 +41,24 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
     });
   });
   return (
-    <section className="story-generator-card" aria-labelledby="story-graph-title">
-      <div className="story-generator-section-heading">
+    <section className="section" aria-labelledby="story-graph-title">
+      <div className="section__header story-graph__header">
         <div>
-          <h2 id="story-graph-title">剧本图</h2>
-          <p>选择节点查看剧情与跳转条件。箭头表示可进入的下一段剧情。</p>
+          <h2 className="section__title" id="story-graph-title">
+            剧本图
+          </h2>
+          <p className="section__description">选择节点查看剧情与跳转条件。箭头表示可进入的下一段剧情。</p>
         </div>
         <div className="story-graph__zoom" role="group" aria-label="图缩放">
-          <button type="button" aria-label="缩小" disabled={zoom <= 0.5} onClick={() => setZoom(zoom - 0.25)}>
+          <Button type="button" aria-label="缩小" disabled={zoom <= 0.5} onClick={() => setZoom(zoom - 0.25)}>
             −
-          </button>
-          <button type="button" aria-label="重置缩放" onClick={() => setZoom(1)}>
+          </Button>
+          <Button type="button" aria-label="重置缩放" onClick={() => setZoom(1)}>
             {Math.round(zoom * 100)}%
-          </button>
-          <button type="button" aria-label="放大" disabled={zoom >= 1.5} onClick={() => setZoom(zoom + 0.25)}>
+          </Button>
+          <Button type="button" aria-label="放大" disabled={zoom >= 1.5} onClick={() => setZoom(zoom + 0.25)}>
             +
-          </button>
+          </Button>
         </div>
       </div>
       <div className="story-graph__scroll" tabIndex={0} role="region" aria-label="剧情节点关系图">
@@ -102,20 +105,22 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
       {selected && (
         <article className="story-graph__detail" aria-label="节点详情">
           <h3>{selected.title}</h3>
-          <p>{selected.instruction || "故事在此结束。"}</p>
-          {selected.background && <p>地点：{selected.background}</p>}
-          {selected.maxRounds !== undefined && <p>最多 {selected.maxRounds} 轮对话</p>}
+          <p className="section__description">{selected.instruction || "故事在此结束。"}</p>
+          {selected.background && <p className="section__description">地点：{selected.background}</p>}
+          {selected.maxRounds !== undefined && <p className="section__description">最多 {selected.maxRounds} 轮对话</p>}
           <ul>
             {selected.transitions?.map((transition, index) => (
               <li key={`${transition.to}-${index}`}>
                 {transition.when} →{" "}
-                <button className="story-graph__link" type="button" onClick={() => setSelectedId(transition.to)}>
+                <Button variant="ghost" type="button" onClick={() => setSelectedId(transition.to)}>
                   {title(transition.to)}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
-          {selected.defaultTo && <p>达到轮数上限时，默认进入：{title(selected.defaultTo)}</p>}
+          {selected.defaultTo && (
+            <p className="section__description">达到轮数上限时，默认进入：{title(selected.defaultTo)}</p>
+          )}
         </article>
       )}
     </section>

@@ -1,3 +1,4 @@
+import { Button, Select } from "../../shared/ui";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listTemplates, templatesQueryKey } from "../../entities/template/repository";
@@ -20,22 +21,26 @@ function StoryWorkspace() {
   const template = templates.data?.find((item) => item.id === task?.options.templateId);
   return (
     <>
-      {templates.isPending && <p role="status">正在加载模板…</p>}
+      {templates.isPending && (
+        <p className="section__description" role="status">
+          正在加载模板…
+        </p>
+      )}
       {templates.isError && (
-        <p role="alert">
+        <p className="section__description" role="alert">
           {templates.error.message}
-          <button type="button" onClick={() => void templates.refetch()}>
+          <Button type="button" onClick={() => void templates.refetch()}>
             重试
-          </button>
+          </Button>
         </p>
       )}
       {templates.isSuccess &&
         (templates.data.length ? (
           <StorySetupForm templates={templates.data} pending={pending} onStart={generation.start} />
         ) : (
-          <section className="story-generator-card">
-            <h2>还没有模板</h2>
-            <p>请切换到正常模式，创建并保存一个模板后再来生成剧本。</p>
+          <section className="section">
+            <h2 className="section__title">还没有模板</h2>
+            <p className="section__description">请切换到正常模式，创建并保存一个模板后再来生成剧本。</p>
           </section>
         ))}
       {generation.error && (
@@ -48,22 +53,24 @@ function StoryWorkspace() {
           <GenerationStages task={task} preview={preview} />
           <div className="story-generator-actions">
             {pending && (
-              <button type="button" disabled={task.cancelRequested} onClick={() => void generation.cancel()}>
+              <Button type="button" disabled={task.cancelRequested} onClick={() => void generation.cancel()}>
                 {task.cancelRequested ? "正在取消…" : "取消生成"}
-              </button>
+              </Button>
             )}
             {["failed", "cancelled"].includes(task.status) && (
-              <button type="button" disabled={pending} onClick={() => void generation.resume()}>
+              <Button type="button" disabled={pending} onClick={() => void generation.resume()}>
                 从断点继续
-              </button>
+              </Button>
             )}
           </div>
           {preview?.graph && <StoryGraphView graph={preview.graph} />}
           <GenerationValidation task={task} />
           {task.status === "succeeded" && (
-            <section className="story-generator-card">
-              <h2>{preview?.title || "生成的剧本"}</h2>
-              <p>使用模板：{template?.name || "原模板已不存在，请选择模板重新生成。"}</p>
+            <section className="section">
+              <h2 className="section__title">{preview?.title || "生成的剧本"}</h2>
+              <p className="section__description">
+                使用模板：{template?.name || "原模板已不存在，请选择模板重新生成。"}
+              </p>
               <StoryLaunchButton
                 key={`${task.id}-${task.updatedAt}`}
                 task={task}
@@ -72,9 +79,9 @@ function StoryWorkspace() {
               />
               <details className="story-regenerate">
                 <summary>调整并重新生成</summary>
-                <p>重做所选阶段及后续阶段，之前的内容会保留。</p>
+                <p className="section__description">重做所选阶段及后续阶段，之前的内容会保留。</p>
                 <div className="story-generator-actions">
-                  <select
+                  <Select
                     aria-label="重新生成阶段"
                     value={regenerationStage}
                     disabled={pending}
@@ -85,14 +92,14 @@ function StoryWorkspace() {
                         {stage.label}
                       </option>
                     ))}
-                  </select>
-                  <button
+                  </Select>
+                  <Button
                     disabled={pending}
                     type="button"
                     onClick={() => void generation.regenerate(regenerationStage)}
                   >
                     重新生成
-                  </button>
+                  </Button>
                 </div>
               </details>
             </section>
@@ -105,10 +112,12 @@ function StoryWorkspace() {
 
 export function StoryGeneratorPage() {
   return (
-    <div className="story-generator-page">
-      <header className="story-generator-header">
-        <h1>让故事成为可游玩的剧本</h1>
-        <p>从一个模板开始，逐步生成人物与剧情，查看每段故事如何走向结局。</p>
+    <div className="page story-generator-page">
+      <header className="page__header">
+        <div>
+          <h1 className="page__title">让故事成为可游玩的剧本</h1>
+          <p className="section__description">从一个模板开始，逐步生成人物与剧情，查看每段故事如何走向结局。</p>
+        </div>
       </header>
       <StoryFeatureGate>
         <StoryWorkspace />

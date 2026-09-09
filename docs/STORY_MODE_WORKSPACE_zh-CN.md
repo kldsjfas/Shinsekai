@@ -24,6 +24,8 @@
 ## 代码职责
 
 - `features/template-workspace`：模式标签与访问状态，不包含生成业务。
+- 页面与分区复用 `page`、`section` 样式；控件复用 `Button`、`Select`、`TextArea`、
+  `SegmentedTabs`。专属 CSS 仅负责工作区嵌入布局、生成阶段和剧本图。
 - `features/story-generator/state`：任务跟踪、恢复、取消与重新生成。
 - `features/story-generator/components`：设置、阶段内容、校验结果和启动交互。
 - `features/story-generator/graph`：有限节点集合的布局与交互，不解释跳转条件。

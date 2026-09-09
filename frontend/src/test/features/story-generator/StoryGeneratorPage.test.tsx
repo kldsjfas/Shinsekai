@@ -101,7 +101,8 @@ describe("StoryGeneratorPage", () => {
     startStoryGeneration.mockResolvedValue(generatedTask());
     renderPage();
 
-    fireEvent.change(await screen.findByRole("combobox", { name: "故事模板" }), { target: { value: "campus.txt" } });
+    fireEvent.click(await screen.findByRole("combobox", { name: "故事模板" }));
+    fireEvent.click(screen.getByRole("option", { name: "校园模板" }));
     expect(screen.getByRole("textbox", { name: "剧情梗概" })).toHaveValue("调查废弃校舍");
     const startButton = screen.getByRole("button", { name: "开始生成" });
     await waitFor(() => expect(startButton).toBeEnabled());
@@ -127,7 +128,8 @@ describe("StoryGeneratorPage", () => {
     resumeStoryGeneration.mockResolvedValue(generatedTask());
     renderPage();
 
-    fireEvent.change(await screen.findByRole("combobox", { name: "故事模板" }), { target: { value: "campus.txt" } });
+    fireEvent.click(await screen.findByRole("combobox", { name: "故事模板" }));
+    fireEvent.click(screen.getByRole("option", { name: "校园模板" }));
     const startButton = screen.getByRole("button", { name: "开始生成" });
     await waitFor(() => expect(startButton).toBeEnabled());
     fireEvent.click(startButton);
@@ -156,7 +158,8 @@ describe("StoryGeneratorPage", () => {
     task.validation!.valid = false;
     startStoryGeneration.mockResolvedValue(task);
     renderPage();
-    fireEvent.change(await screen.findByRole("combobox", { name: "故事模板" }), { target: { value: "campus.txt" } });
+    fireEvent.click(await screen.findByRole("combobox", { name: "故事模板" }));
+    fireEvent.click(screen.getByRole("option", { name: "校园模板" }));
     const start = screen.getByRole("button", { name: "开始生成" });
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);

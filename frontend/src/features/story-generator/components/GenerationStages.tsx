@@ -51,9 +51,11 @@ function ArtifactContent({ value }: { value: unknown }) {
 
 export function GenerationStages({ task, preview }: { task: StoryGenerationTask; preview?: StoryGenerationPreview }) {
   return (
-    <section className="story-generator-card" aria-labelledby="story-progress-title">
-      <h2 id="story-progress-title">生成进度</h2>
-      <p role="status" aria-live="polite">
+    <section className="section" aria-labelledby="story-progress-title">
+      <h2 className="section__title" id="story-progress-title">
+        生成进度
+      </h2>
+      <p className="section__description" role="status" aria-live="polite">
         {taskStatus[task.status]}
         {task.currentStage === "repair" ? " · 正在修复校验问题" : ""}
       </p>
@@ -80,7 +82,9 @@ export function GenerationStages({ task, preview }: { task: StoryGenerationTask;
             {preview?.artifacts[stage.id] ? (
               <>
                 {stage.id === "narrative" ? (
-                  <p>已生成 {preview.graph?.nodes.length ?? 0} 个节点，详见下方剧本图。</p>
+                  <p className="section__description">
+                    已生成 {preview.graph?.nodes.length ?? 0} 个节点，详见下方剧本图。
+                  </p>
                 ) : (
                   <ArtifactContent value={preview.artifacts[stage.id]} />
                 )}
@@ -90,7 +94,9 @@ export function GenerationStages({ task, preview }: { task: StoryGenerationTask;
                 </details>
               </>
             ) : (
-              <p>{task.completedStages.includes(stage.id) ? "正在读取阶段内容…" : "阶段完成后可查看。"}</p>
+              <p className="section__description">
+                {task.completedStages.includes(stage.id) ? "正在读取阶段内容…" : "阶段完成后可查看。"}
+              </p>
             )}
           </details>
         ))}

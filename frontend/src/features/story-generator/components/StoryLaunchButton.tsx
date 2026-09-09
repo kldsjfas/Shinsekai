@@ -1,3 +1,4 @@
+import { Button } from "../../../shared/ui";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -60,13 +61,14 @@ export function StoryLaunchButton({
   };
   return (
     <>
-      <button
+      <Button
+        variant="primary"
         type="button"
         disabled={disabled || !template || init.initializationPending}
         onClick={() => void launch()}
       >
         {init.initializationPending ? "正在启动…" : "运行剧本"}
-      </button>
+      </Button>
       {error && (
         <p className="story-generator-error" role="alert">
           {error}
