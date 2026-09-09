@@ -270,6 +270,8 @@ def publish_story_transition(
     resource_patch = _approved_resource_patch(state)
     live_patch.update(resource_patch)
     events: list[dict[str, Any]] = []
+    if "backgroundPath" in live_patch:
+        events.append({"type": "background.change", "url": live_patch["backgroundPath"]})
     if history_entries is not None:
         events.append(
             {
