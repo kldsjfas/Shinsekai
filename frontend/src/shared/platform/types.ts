@@ -1370,6 +1370,8 @@ export interface ShinsekaiPlatform {
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   story: {
+    getPreview: (id: string) => Promise<import("./storyPreviewTypes").StoryGenerationPreview>;
+    startSession: (storyPath: string) => Promise<ChatSnapshot>;
     cancelGeneration: (id: string) => Promise<StoryGenerationTask>;
     getGeneration: (id: string) => Promise<StoryGenerationTask>;
     regenerateGeneration: (

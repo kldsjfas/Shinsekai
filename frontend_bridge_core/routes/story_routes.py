@@ -11,6 +11,7 @@ from application.story.generation import (
     run_story_generation_background,
     story_generation_service_for_state,
 )
+from application.story.generation_preview import generation_preview
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -19,6 +20,15 @@ from frontend_bridge_core.routes.router import (
     TaskResponse,
 )
 from sdk.logging import new_log_id
+
+
+def _generation_preview(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        generation_preview(
+            story_generation_service_for_state(request.state),
+            request.params["generation_task_id"],
+        )
+    )
 
 
 def _get_generation(request: ApiRequest) -> JsonResponse:
@@ -131,6 +141,13 @@ def _cancel_generation(request: ApiRequest) -> JsonResponse:
 
 
 STORY_ROUTES = (
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/story/generation/{generation_task_id}/preview",
+        handler=_generation_preview,
+        body_kind=BodyKind.NONE,
+        name="story.generation.preview",
+    ),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/story/generation/{generation_task_id}",

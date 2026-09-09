@@ -29,3 +29,11 @@ export function cancelStoryGeneration(id: string) {
 export function getStoryGeneration(id: string) {
   return getPlatform().story.getGeneration(id);
 }
+
+export function getStoryPreview(id: string) {
+  return getPlatform().story.getPreview(id);
+}
+
+export function startStorySession(storyPath: string) {
+  return getPlatform().story.startSession(storyPath);
+}
