@@ -17,6 +17,7 @@ const mockLaunchChat = vi.fn();
 const mockGetChatSnapshot = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
 const mockGetAppConfig = vi.fn();
+const mockGetMemoryStatus = vi.fn();
 const mockSaveSystemConfig = vi.fn();
 const mockGenerateTemplate = vi.fn();
 const mockGetTemplateSession = vi.fn();
@@ -54,6 +55,7 @@ vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
 vi.mock("../../../entities/config/repository", () => ({
   configQueryKey: ["config"],
   getAppConfig: () => mockGetAppConfig(),
+  getMemoryStatus: (options: unknown) => mockGetMemoryStatus(options),
   saveSystemConfig: (input: unknown) => mockSaveSystemConfig(input),
 }));
 
@@ -113,6 +115,7 @@ describe("TemplateEditorPage", () => {
     mockListTemplates.mockResolvedValue([template]);
     mockGetTemplateSession.mockResolvedValue(null);
     mockGetAppConfig.mockResolvedValue(structuredClone(sampleConfig));
+    mockGetMemoryStatus.mockResolvedValue({ modelCached: true, status: "ready" });
     mockListCharacters.mockResolvedValue([
       { color: "#66ccff", name: "Nanami" },
       { color: "#ff99aa", name: "Mika" },
@@ -176,6 +179,37 @@ describe("TemplateEditorPage", () => {
       ),
     );
     expect(await screen.findByDisplayValue("Generated scenario")).toBeInTheDocument();
+  });
+
+  it("shows an options heading and enables vibe generation after mem0 is ready", async () => {
+    renderPage();
+
+    expect(await screen.findByText("Prompt options")).toHaveClass("template-side-field__label");
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Smart sprite matching" }));
+
+    await waitFor(() => expect(mockGetMemoryStatus).toHaveBeenCalledWith({ startLoading: true }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).toBeChecked());
+    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "semantic" })),
+    );
+  });
+
+  it("downgrades a restored semantic template when mem0 installation is declined", async () => {
+    mockListTemplates.mockResolvedValue([{ ...template, mediaSelectionMode: "semantic" }]);
+    mockGetMemoryStatus.mockResolvedValue({
+      moduleName: "mem0",
+      packageName: "mem0ai",
+      status: "missing_dependency",
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderPage();
+    const toggle = await screen.findByRole("checkbox", { name: "Smart sprite matching" });
+    await waitFor(() => expect(window.confirm).toHaveBeenCalled());
+    await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
   it("asks for primary characters above the threshold and generates missing supporting briefs", async () => {

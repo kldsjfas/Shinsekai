@@ -43,6 +43,7 @@ class ChatStartupContext:
     t2i_manager: T2IManager | None
     plugin_manager: PluginManager | None
     messages: list[Any]
+    character_names: tuple[str, ...]
 
 
 class MissingLlmProviderError(RuntimeError):
@@ -164,6 +165,9 @@ def create_chat_startup_context(
             hook_dispatcher=(
                 plugin_manager.hook_dispatcher if plugin_manager is not None else None
             ),
+            media_selection_mode=str(
+                getattr(args, "media_selection_mode", "indexed") or "indexed"
+            ),
         )
         if plugin_manager is not None:
             runtime.install_memory_hooks(
@@ -200,6 +204,7 @@ def create_chat_startup_context(
         t2i_manager=t2i_manager,
         plugin_manager=plugin_manager,
         messages=messages,
+        character_names=tuple(character_names),
     )
 
 

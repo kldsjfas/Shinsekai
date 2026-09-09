@@ -330,6 +330,10 @@ class ChatCommandDispatcher:
             hist=self.chat_history,
             window=self.history_presenter,
         )
+        replay_media = getattr(self.branch_manager, "replay_media", None)
+        if callable(replay_media):
+            replay_media(self.llm_manager.get_messages())
+        self.branch_manager.persist()
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
 
