@@ -7,9 +7,10 @@ of that response advances the saved node for the next prompt.
 
 from __future__ import annotations
 
-import hashlib
+import copy
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -23,10 +24,12 @@ from .generation import _adapter_text_content, _parse_json_mapping
 from .persistence import (
     JsonGlobalStoryProgressStore,
     JsonStorySessionRepository,
+    StoryConcurrentWriteError,
     _atomic_write_json,
 )
 from .project_loader import load_story_project
 from .session import StorySession
+from .prompt_turns import PromptTurnJournal, assessment_message
 
 BINDING_FILENAME = "story-prompt-binding.json"
 logger = logging.getLogger(__name__)
@@ -106,17 +109,44 @@ class StoryPromptHooks:
         self.flags = flags
         self.adapter = adapter
         self.publish = lambda story: None
-        self._turn: tuple[str, str, int] | None = None
+        self.history_entries = lambda: []
+        self.branch_id = lambda: None
+        self.journal = PromptTurnJournal(history_path)
+        self._turn: tuple[str, str, int, str] | None = None
+        self._history: list[dict[str, Any]] = []
+        self._assessment: list[dict[str, Any]] = []
+
+    @staticmethod
+    def _identity(session: StorySession) -> tuple[str, str, int, str]:
+        return (
+            session.active_branch_id,
+            session.active_branch.state.current_node_id,
+            session.active_branch.state.revision,
+            session.repository.document_revision,
+        )
 
     def before_chat(self, context: BeforeChatContext) -> None:
         if not self.flags.is_enabled(FeatureFlag.STORY_SYSTEM):
             return
+        self._turn = None
+        self.recover_pending()
         session = load_prompt_session(self.history_path, self.flags)
         if session is None:
             self._turn = None
             return
-        state = session.active_branch.state
-        self._turn = (session.active_branch_id, state.current_node_id, state.revision)
+        if (
+            self.branch_id() is not None
+            and self.branch_id() != session.active_branch_id
+        ):
+            return
+        self._turn = self._identity(session)
+        # UI history is uncompressed and uses the same user order as fork/revert.
+        self._history = copy.deepcopy(self.history_entries())
+        self._assessment = [
+            assessment_message(item)
+            for item in context.messages
+            if item.get("role") in {"user", "assistant"}
+        ][-11:]
         # BEFORE_CHAT receives a copy, so the base template/history stay intact.
         context.messages.insert(
             1
@@ -124,6 +154,41 @@ class StoryPromptHooks:
             else 0,
             {"role": "system", "content": node_prompt(session)},
         )
+
+    def persist_message(self, message: dict[str, Any]) -> bool:
+        """Journal accepted dialogue before the normal incremental history write."""
+        if (
+            self._turn is None
+            or message.get("role") != "assistant"
+            or message.get("tool_calls")
+            or not parse_assistant_dialog_content(message.get("content"))
+        ):
+            return False
+        if self.branch_id() is not None and self.branch_id() != self._turn[0]:
+            return False
+        message.setdefault("_storyTurnId", uuid.uuid4().hex)
+        turn = {
+            "expected": self._turn,
+            "message": copy.deepcopy(message),
+            "conversation": [*self._assessment, assessment_message(message)],
+            "historyEntries": [*self._history, assessment_message(message)],
+        }
+        self.journal.save(turn)
+        self.journal.ensure_reply(turn)
+        return True
+
+    def recover_pending(self) -> None:
+        if not self.flags.is_enabled(FeatureFlag.STORY_SYSTEM):
+            return
+        turn = self.journal.load()
+        if turn is None:
+            return
+        session = load_prompt_session(self.history_path, self.flags)
+        if session is None or tuple(turn["expected"]) != self._identity(session):
+            self.journal.clear()
+            return
+        self.journal.ensure_reply(turn)
+        self._advance(turn)
 
     def message_added(self, context: MessageAddedContext) -> None:
         if (
@@ -134,24 +199,26 @@ class StoryPromptHooks:
             or not parse_assistant_dialog_content(context.message.get("content"))
         ):
             return
-        expected = self._turn
+        if self.journal.load() is None:
+            self.persist_message(copy.deepcopy(context.message))
         self._turn = None
+        self.recover_pending()
+
+    def _advance(self, turn: dict[str, Any]) -> None:
+        expected = tuple(turn["expected"])
         session = load_prompt_session(self.history_path, self.flags)
         if session is None:
             return
         state = session.active_branch.state
-        if expected != (
-            session.active_branch_id,
-            state.current_node_id,
-            state.revision,
-        ):
+        if expected != self._identity(session):
             return  # The user rolled back/switched branches during generation.
         node = session.runtime.program.nodes_by_id[state.current_node_id]
         if node.type not in {"limited_turn_node", "free_chat_node"}:
+            self.journal.clear()
             return
         messages = [
-            item
-            for item in context.messages
+            assessment_message(item)
+            for item in turn["conversation"]
             if item.get("role") in {"user", "assistant"}
         ]
         target = None
@@ -199,29 +266,26 @@ class StoryPromptHooks:
             and target is None
             and node.default_to is None
         ):
+            self.journal.clear()
             return
         fresh = load_prompt_session(self.history_path, self.flags)
-        if fresh is None or expected != (
-            fresh.active_branch_id,
-            fresh.active_branch.state.current_node_id,
-            fresh.active_branch.state.revision,
-        ):
+        if fresh is None or expected != self._identity(fresh):
+            self.journal.clear()
             return
-        command_id = (
-            "template-turn:"
-            + hashlib.sha256(
-                json.dumps(messages, ensure_ascii=False, sort_keys=True).encode()
-            ).hexdigest()
-        )
-        fresh.execute(
-            AdvanceStoryTurn(
-                command_id=command_id,
-                expected_revision=state.revision,
-                expected_node_id=node.id,
-                next_node_id=target,
-            ),
-            history_entries=messages,
-        )
+        try:
+            fresh.execute(
+                AdvanceStoryTurn(
+                    command_id="template-turn:" + turn["message"]["_storyTurnId"],
+                    expected_revision=state.revision,
+                    expected_node_id=node.id,
+                    next_node_id=target,
+                ),
+                history_entries=turn["historyEntries"],
+            )
+        except StoryConcurrentWriteError:
+            self.journal.clear()
+            return
+        self.journal.clear()
         self.publish(fresh.chat_snapshot()["story"])
 
 
@@ -236,6 +300,12 @@ def install_story_prompt_hooks(
         dispatcher = PluginHookDispatcher()
         llm_manager.hook_dispatcher = dispatcher
     hooks = StoryPromptHooks(history_path, flags, llm_manager.llm_adapter)
+    from application.chat.history_state import (
+        get_history,
+        serialize_chat_history_entries,
+    )
+
+    hooks.history_entries = lambda: serialize_chat_history_entries(list(get_history()))
     dispatcher.register_before_chat(hooks.before_chat, label="story_prompt")
     dispatcher.register_message_added(hooks.message_added, label="story_progress")
     llm_manager.story_prompt_hooks = hooks

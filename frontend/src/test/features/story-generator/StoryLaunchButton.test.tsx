@@ -4,17 +4,19 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StoryLaunchButton } from "../../../features/story-generator/components/StoryLaunchButton";
 
-const { launchChat, getChatRuntimeStatus, startStorySession, showChatSurface, prepareStoryLaunch } = vi.hoisted(() => ({
-  prepareStoryLaunch: vi.fn(),
-  launchChat: vi.fn(),
-  getChatRuntimeStatus: vi.fn(),
-  startStorySession: vi.fn(),
-  showChatSurface: vi.fn(),
-}));
+const { launchChat, getChatRuntimeStatus, getChatSnapshot, startStorySession, showChatSurface, prepareStoryLaunch } =
+  vi.hoisted(() => ({
+    prepareStoryLaunch: vi.fn(),
+    launchChat: vi.fn(),
+    getChatRuntimeStatus: vi.fn(),
+    getChatSnapshot: vi.fn(),
+    startStorySession: vi.fn(),
+    showChatSurface: vi.fn(),
+  }));
 vi.mock("../../../entities/chat/repository", () => ({
   launchChat,
   getChatRuntimeStatus,
-  getChatSnapshot: () => Promise.resolve({ sessionId: "session-1" }),
+  getChatSnapshot,
   chatQueryKey: ["chat"],
 }));
 vi.mock("../../../entities/story/repository", () => ({
@@ -26,7 +28,7 @@ vi.mock("../../../shared/desktop/chatWindow", () => ({ showChatSurface }));
 vi.mock("../../../features/chat-startup/ChatInitializationDialog", () => ({ ChatInitializationDialog: () => null }));
 
 function renderButton(historyPath = "") {
-  render(
+  return render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
         <StoryLaunchButton storyPath="story/draft.json" historyPath={historyPath} disabled={false} />
@@ -38,6 +40,8 @@ function renderButton(historyPath = "") {
 describe("story launch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    getChatSnapshot.mockResolvedValue({ sessionId: "session-1", runtimeMode: "react" });
     getChatRuntimeStatus.mockResolvedValue({ state: "idle" });
     prepareStoryLaunch.mockImplementation((_storyPath: string, historyPath: string) =>
       Promise.resolve({
@@ -94,5 +98,32 @@ describe("story launch", () => {
     fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
     await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
     expect(launchChat).toHaveBeenCalledTimes(1);
+  });
+  it("preserves attachment retry after remount with a new query cache", async () => {
+    startStorySession.mockRejectedValueOnce(new Error("network unavailable"));
+    const first = renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await screen.findByRole("alert");
+    first.unmount();
+    getChatRuntimeStatus.mockResolvedValue({ state: "running" });
+    renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
+    expect(launchChat).toHaveBeenCalledTimes(1);
+    expect(startStorySession).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem("story.pending-attachment.v1")).toBeNull();
+  });
+  it.each(["changed-session", "changed-save", "closing"])("rejects a stale retry after %s", async (change) => {
+    startStorySession.mockRejectedValueOnce(new Error("network unavailable"));
+    const first = renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await screen.findByRole("alert");
+    first.unmount();
+    getChatRuntimeStatus.mockResolvedValue({ state: change === "closing" ? "closing" : "running" });
+    if (change === "changed-session") getChatSnapshot.mockResolvedValue({ sessionId: "session-2" });
+    renderButton(change === "changed-save" ? "different-save" : "");
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("请先结束当前聊天");
+    expect(startStorySession).toHaveBeenCalledTimes(1);
   });
 });
