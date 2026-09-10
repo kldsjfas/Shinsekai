@@ -149,6 +149,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
         backgroundPath: event.url,
+        sprites: event.url === (state.backgroundPath ?? "") ? state.sprites : [],
         eventSeq: Math.max(state.eventSeq, event.seq),
       });
     case "bgm.change":

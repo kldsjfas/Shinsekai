@@ -238,7 +238,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "background.change":
         _clear_transient_notification_state(next_snapshot)
-        next_snapshot["backgroundPath"] = str(event.get("url") or "")
+        background_path = str(event.get("url") or "")
+        if background_path != (next_snapshot.get("backgroundPath") or ""):
+            next_snapshot["sprites"] = []
+        next_snapshot["backgroundPath"] = background_path
         return next_snapshot
 
     if event_type == "bgm.change":

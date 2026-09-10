@@ -166,6 +166,31 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     )
 
 
+def test_llm_worker_reads_background_each_send_and_keeps_user_display_text() -> None:
+    runtime = _make_app_runtime()
+    runtime.config.config.api_config.is_streaming = False
+    runtime.ui_update_manager.current_background_path = "room.png"
+    queue = CountingQueue()
+    queue.put(UserInputMessage(text="第一轮"))
+    queue.put(UserInputMessage(text="第二轮"))
+    queue.put(None)
+
+    def reply(*args, **kwargs):
+        runtime.ui_update_manager.current_background_path = "street.png"
+        return '{"character_name":"Alice","speech":"Hi","sprite":"0"}'
+
+    runtime.llm_manager.chat.side_effect = reply
+    LLMWorker(queue, runtime.dialog_queue).run()
+
+    first, second = runtime.llm_manager.chat.call_args_list
+    assert "room.png" in first.args[0]
+    assert "street.png" in second.args[0]
+    assert "room.png" not in second.args[0]
+    assert first.kwargs["user_input_text"] == first.kwargs["user_display_text"] == "第一轮"
+    assert second.kwargs["user_input_text"] == second.kwargs["user_display_text"] == "第二轮"
+    assert [call.args[0] for call in runtime.ui_update_manager.record_user_message.call_args_list] == ["第一轮", "第二轮"]
+
+
 def test_llm_worker_does_not_requeue_dialogue_after_stream_repair() -> None:
     valid = (
         '{"dialog":['
@@ -227,6 +252,7 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
     runtime = _make_app_runtime()
     runtime.config.config.api_config.is_streaming = False
     runtime.llm_manager.llm_adapter.supports_native_vision = True
+    runtime.ui_update_manager.current_background_path = "current-background.png"
     runtime.llm_manager.chat.return_value = '{"character_name":"Alice","speech":"Done","sprite":"0"}'
     worker = LLMWorker(user_input_queue, dialog_queue)
     worker.run()
@@ -234,6 +260,7 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
     content = runtime.llm_manager.chat.call_args.args[0]
     assert content[0]["type"] == "text"
     assert "notes" in content[0]["text"]
+    assert "current-background.png" in content[0]["text"]
     assert "BEGIN ATTACHED FILE: notes.txt" in content[0]["text"]
     assert content[1]["type"] == "local_image"
     assert runtime.llm_manager.chat.call_args.kwargs["user_display_text"] == (

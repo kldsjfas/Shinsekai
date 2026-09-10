@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
 from application.chat.ui_updates import (
     HeadlessUIUpdateManager,
     StreamingUIUpdateManager,
@@ -207,6 +209,34 @@ def test_streaming_presenter_keeps_character_slot_across_expression_changes() ->
 
     assert [event["slot"] for event in sink.events] == [0, 0]
     assert sink.events[-1]["url"] == "media://happy.png"
+
+
+@pytest.mark.parametrize("next_background", ["street.png", ""])
+def test_background_switch_clears_reconnect_sprites_and_reassigns_slots(next_background) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    presenter.post_background("room.png")
+    presenter.update_sprite_from_path("mio.png", character_name="Mio")
+    presenter.update_sprite_from_path("ren.png", character_name="Ren")
+    presenter.post_background("room.png")
+    presenter.update_sprite_from_path("aoi.png", character_name="Aoi")
+    assert [event["slot"] for event in sink.events if event["type"] == "sprite.show"] == [0, 1, 2]
+
+    snapshot = make_empty_chat_snapshot()
+    for event in sink.events:
+        snapshot = fold_event_into_snapshot(snapshot, event)
+    assert len(snapshot["sprites"]) == 3
+
+    presenter.post_background(next_background)
+    cleared = fold_event_into_snapshot(snapshot, sink.events[-1])
+    assert cleared["sprites"] == []
+    assert len(snapshot["sprites"]) == 3
+
+    presenter.update_sprite_from_path("ren-happy.png", character_name="Ren")
+    returned = fold_event_into_snapshot(cleared, sink.events[-1])
+    assert [(sprite["characterName"], sprite["slot"]) for sprite in returned["sprites"]] == [("Ren", 0)]
+    presenter.update_sprite_from_path("mio.png", character_name="Mio")
+    assert sink.events[-1]["slot"] == 1
 
 
 def test_headless_presenter_records_framework_neutral_history() -> None:

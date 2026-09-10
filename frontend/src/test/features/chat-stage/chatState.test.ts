@@ -4,6 +4,45 @@ import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../..
 import { chatStageSpriteAxisCenter, limitChatStageSpritesToSlots } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
+  it.each(["asset://street.png", ""])("clears old sprites on background switch to %s and reallocates slots", (url) => {
+    const oldScene = {
+      ...emptyChatState,
+      backgroundPath: "asset://room.png",
+      sprites: [
+        { id: "Mio:0", label: "Mio", characterName: "Mio", path: "mio.png", slot: 0 },
+        { id: "Ren:1", label: "Ren", characterName: "Ren", path: "ren.png", slot: 1 },
+      ],
+    };
+    const unchanged = chatStageReducer(oldScene, {
+      type: "event",
+      event: { type: "background.change", url: oldScene.backgroundPath, seq: 1, ts: 1, v: 1 },
+    });
+    expect(unchanged.sprites).toEqual(oldScene.sprites);
+
+    const cleared = chatStageReducer(unchanged, {
+      type: "event",
+      event: { type: "background.change", url, seq: 2, ts: 2, v: 1 },
+    });
+    expect(cleared.sprites).toEqual([]);
+    expect(oldScene.sprites).toHaveLength(2);
+
+    const returned = chatStageReducer(cleared, {
+      type: "event",
+      event: {
+        type: "sprite.show",
+        characterName: "Ren",
+        url: "ren-happy.png",
+        scale: 1,
+        slot: 0,
+        seq: 3,
+        ts: 3,
+        v: 1,
+      },
+    });
+    expect(returned.sprites).toHaveLength(1);
+    expect(returned.sprites[0]).toMatchObject({ characterName: "Ren", slot: 0, path: "ren-happy.png" });
+  });
+
   it("applies background and BGM changes from the runtime stream", () => {
     const withBackground = chatStageReducer(emptyChatState, {
       event: {
