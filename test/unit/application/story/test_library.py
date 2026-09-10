@@ -93,7 +93,18 @@ def test_selection_reaches_author_and_runtime_with_primary_and_secondary_setting
         "小玲的完整设定",
         "小晴简介",
     ]
-    payload = prepare_story_launch(state, task["draftPath"])
+    route = next(item for item in STORY_ROUTES if item.name == "story.launch-payload")
+    response = route.handler(
+        ApiRequest(
+            state=state,
+            method="POST",
+            path=route.pattern,
+            query={},
+            params={},
+            body={"storyPath": task["draftPath"]},
+        )
+    )
+    payload = response.data
     assert payload["templateId"] == ""
     assert payload["characters"] == ["小玲", "小晴"]
     assert payload["backgroundName"] == "旧校舍"

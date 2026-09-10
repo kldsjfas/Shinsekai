@@ -14,7 +14,8 @@ from application.story.prompt_runtime import (
     install_story_prompt_hooks,
     load_prompt_session,
 )
-from application.story.library import prepare_story_launch
+from frontend_bridge_core.routes.router import ApiRequest
+from frontend_bridge_core.routes.story_routes import STORY_ROUTES
 from application.chat.session_store import save_template_session
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 from test.unit.application.story.test_library import selected_story
@@ -214,7 +215,17 @@ def test_story_launch_inherits_normal_workflow_and_template_options_without_savi
     )
     path = tmp_path / "data/config/template_tab_last_launch.json"
     before = path.read_bytes()
-    launch = prepare_story_launch(state, task["draftPath"])
+    route = next(item for item in STORY_ROUTES if item.name == "story.launch-payload")
+    launch = route.handler(
+        ApiRequest(
+            state=state,
+            method="POST",
+            path=route.pattern,
+            query={},
+            params={},
+            body={"storyPath": task["draftPath"]},
+        )
+    ).data
     assert launch["workflowPath"] == "my-existing-workflow.json"
     assert launch["useCg"] is True and launch["useChoice"] is False
     assert launch["maxDialogItems"] == 6

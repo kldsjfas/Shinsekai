@@ -15,6 +15,10 @@ from application.story.generation_recovery import recovery_for
 from application.story.generation_preview import generation_preview
 from application.story.selection import generation_selection
 from application.story.library import list_story_library, prepare_story_launch
+from frontend_bridge_core.chat_session import (
+    _generate_system_template_for_mode,
+    _usable_media_selection_mode,
+)
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -23,6 +27,25 @@ from frontend_bridge_core.routes.router import (
     TaskResponse,
 )
 from sdk.logging import new_log_id
+
+
+def _prepare_launch(request: ApiRequest) -> JsonResponse:
+    payload = prepare_story_launch(
+        request.state,
+        str(request.body.get("storyPath") or ""),
+        str(request.body.get("historyPath") or ""),
+    )
+    payload["mediaSelectionMode"] = _usable_media_selection_mode(
+        payload.get("mediaSelectionMode")
+    )
+    payload["system"] = _generate_system_template_for_mode(
+        request.state,
+        characters=payload["characters"],
+        background=payload["backgroundName"],
+        source=payload,
+        media_selection_mode=payload["mediaSelectionMode"],
+    )
+    return JsonResponse(payload)
 
 
 def _generation_preview(request: ApiRequest) -> JsonResponse:
@@ -163,13 +186,7 @@ STORY_ROUTES = (
     Route(
         methods=frozenset({"POST"}),
         pattern="/api/story/launch-payload",
-        handler=lambda request: JsonResponse(
-            prepare_story_launch(
-                request.state,
-                str(request.body.get("storyPath") or ""),
-                str(request.body.get("historyPath") or ""),
-            )
-        ),
+        handler=_prepare_launch,
         name="story.launch-payload",
     ),
     Route(

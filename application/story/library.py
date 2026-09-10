@@ -141,19 +141,4 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         "scenario": bindings.get("scenario")
         or f"正在游玩互动剧本《{project.title}》。",
     }
-    from frontend_bridge_core.chat_session import (
-        _generate_system_template_for_mode,
-        _usable_media_selection_mode,
-    )
-
-    payload["mediaSelectionMode"] = _usable_media_selection_mode(
-        payload.get("mediaSelectionMode")
-    )
-    payload["system"] = _generate_system_template_for_mode(
-        state,
-        characters=names,
-        background=background,
-        source=payload,
-        media_selection_mode=payload["mediaSelectionMode"],
-    )
     return payload
