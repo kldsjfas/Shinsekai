@@ -322,21 +322,20 @@ def test_directed_repair_loop_applies_only_a_bounded_patch(tmp_path: Path) -> No
     assert result["cost"]["requests"] == 4
 
 
-def test_node_backgrounds_must_use_supplied_names(tmp_path: Path) -> None:
+def test_node_background_hints_can_use_new_locations(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
     for node in artifacts["narrative"]["nodes"]:
         node["background"] = "unknown-background"
     model = ScriptedModel(artifacts)
     service, _ = service_at(tmp_path, model)
     task = service.create(
-        "Choose only supplied backgrounds.",
+        "Use catalog backgrounds as optional location hints.",
         task_id="resource-task",
         resource_catalog={"backgrounds": [{"id": "known-background"}]},
     )
 
-    with pytest.raises(StoryGenerationError, match="selected unknown background"):
-        service.run(task["id"])
-    assert service.get(task["id"])["currentStage"] == "narrative"
+    assert service.run(task["id"])["validation"]["valid"]
+    assert service.get(task["id"])["currentStage"] == "complete"
 
 
 def test_character_stage_is_only_a_story_wide_list(tmp_path: Path) -> None:
@@ -472,7 +471,7 @@ def test_save_merges_cancel_requested_from_disk(tmp_path: Path) -> None:
     assert saved["currentStage"] == "narrative"
 
 
-def test_applied_repair_is_checkpointed_before_attempt_count(tmp_path: Path) -> None:
+def test_applied_repair_is_checkpointed_and_new_pass_gets_fresh_budget(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
     artifacts["narrative"]["nodes"].append(
         {"id": "orphan-ending", "title": "Orphan", "type": "ending_node"}
@@ -492,7 +491,8 @@ def test_applied_repair_is_checkpointed_before_attempt_count(tmp_path: Path) -> 
     model.calls.clear()
     with pytest.raises(StoryGenerationError, match="did not pass validation"):
         service.run(task["id"], resume=True)
-    assert "repair" not in model.calls
+    assert model.calls == ["repair", "repair", "repair"]
+    assert service.get(task["id"])["repairAttempts"] == 6
     assert (
         repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)["nodes"][
             0
@@ -527,7 +527,7 @@ def test_available_backgrounds_are_retained_without_bindings(tmp_path: Path) -> 
     ]
 
 
-def test_background_failure_writes_generation_task_snapshot(tmp_path: Path) -> None:
+def test_background_failure_automatically_recovers_and_updates_snapshot(tmp_path: Path) -> None:
     model = ScriptedModel(stage_artifacts(), fail_once_at="foundation")
     service, _ = service_at(tmp_path, model)
     generated = service.create("Show failure on the page.", task_id="ui-fail")
@@ -540,11 +540,11 @@ def test_background_failure_writes_generation_task_snapshot(tmp_path: Path) -> N
     )
     bridge = _create_task(state, kind="story-generation", title="AI story compiler")
 
-    with pytest.raises(RuntimeError, match="transient"):
-        run_story_generation_background(state, bridge["id"], generated["id"])
+    result = run_story_generation_background(state, bridge["id"], generated["id"])
+    assert result["validation"]["valid"]
     updated = _get_task(state, bridge["id"])
-    assert updated["generationTask"]["status"] == "failed"
-    assert updated["generationTask"]["currentStage"] == "foundation"
+    assert updated["generationTask"]["status"] == "succeeded"
+    assert updated["generationTask"]["currentStage"] == "complete"
 
 
 def test_validator_detects_secret_in_title_and_choice_label() -> None:
@@ -606,5 +606,5 @@ def test_failed_eval_includes_spent_cost(tmp_path: Path) -> None:
     )
 
     assert report["cases"][0]["passed"] is False
-    assert report["generationCost"]["requests"] == 2
+    assert report["generationCost"]["requests"] == 3
     assert report["generationCost"]["estimatedTokens"] > 0

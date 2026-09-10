@@ -6,6 +6,16 @@ import type {
   TaskProgressOptions,
 } from "../../shared/platform/types";
 
+export const storyLibraryQueryKey = ["story-library"] as const;
+
+export function listStories() {
+  return getPlatform().story.list();
+}
+
+export function prepareStoryLaunch(storyPath: string, historyPath?: string) {
+  return getPlatform().story.prepareLaunch(storyPath, historyPath);
+}
+
 export function startStoryGeneration(input: StoryGenerationInput, options?: TaskProgressOptions<StoryGenerationTask>) {
   return getPlatform().story.startGeneration(input, options);
 }

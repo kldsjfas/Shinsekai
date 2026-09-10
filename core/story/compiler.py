@@ -479,20 +479,8 @@ class StoryCompiler:
                 "interactive nodes require an instruction",
                 f"{path}.instruction",
             )
-        if backgrounds and node.background is None:
-            self._error(
-                diagnostics,
-                "narrative.missing_background",
-                "simple nodes require a background when metadata.backgrounds is not empty",
-                f"{path}.background",
-            )
-        elif node.background is not None and node.background not in backgrounds:
-            self._error(
-                diagnostics,
-                "narrative.unknown_background",
-                f"background {node.background!r} is not in metadata.backgrounds",
-                f"{path}.background",
-            )
+        # Background is narrative context. Template chat owns media selection,
+        # so story nodes neither require nor whitelist installed backgrounds.
         if node.type == StoryNodeType.LIMITED_TURN.value:
             if node.max_rounds is None:
                 self._error(

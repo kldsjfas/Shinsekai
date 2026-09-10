@@ -12,7 +12,7 @@ import itertools
 import math
 import re
 import time
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Dict, Protocol, runtime_checkable
 
 #: 事件协议版本，与前端 ``ChatStageEvent`` 的 ``v`` 字段一致。
 EVENT_PROTOCOL_VERSION = 1
@@ -267,11 +267,6 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         story = event.get("story")
         if isinstance(story, dict):
             next_snapshot["story"] = dict(story)
-            next_snapshot["options"] = [
-                dict(item)
-                for item in story.get("options", [])
-                if isinstance(item, dict)
-            ]
         return next_snapshot
 
     if event_type in {"story.node.entered", "story.node.unlocked", "story.cast.replace", "story.ending.reached"}:

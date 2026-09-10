@@ -4,6 +4,7 @@ import { Button } from "../../shared/ui";
 import "./CharacterRoleStatus.css";
 
 interface CharacterRoleStatusProps {
+  disabled?: boolean;
   mode?: CharacterPromptMode;
   onConfigure: () => void;
   onUseAll: () => void;
@@ -12,6 +13,7 @@ interface CharacterRoleStatusProps {
 }
 
 export function CharacterRoleStatus({
+  disabled = false,
   mode,
   onConfigure,
   onUseAll,
@@ -41,10 +43,14 @@ export function CharacterRoleStatus({
         {status}
       </p>
       <div className="character-role-status__actions">
-        <Button onClick={onConfigure} variant="ghost">
+        <Button disabled={disabled} onClick={onConfigure} variant="ghost">
           {t(mode ? "template.primaryCharacters.modify" : "template.primaryCharacters.configure")}
         </Button>
-        {mode !== "full" ? <Button onClick={onUseAll}>{t("template.primaryCharacters.useAll")}</Button> : null}
+        {mode !== "full" ? (
+          <Button disabled={disabled} onClick={onUseAll}>
+            {t("template.primaryCharacters.useAll")}
+          </Button>
+        ) : null}
       </div>
     </div>
   );

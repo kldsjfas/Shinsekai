@@ -3,21 +3,22 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { chatQueryKey, getChatRuntimeStatus, getChatSnapshot, launchChat } from "../../../entities/chat/repository";
-import { startStorySession } from "../../../entities/story/repository";
-import type { ChatSnapshot, StoryGenerationTask, TemplateSummary } from "../../../shared/platform/types";
+import { prepareStoryLaunch, startStorySession, storyLibraryQueryKey } from "../../../entities/story/repository";
+import type { ChatSnapshot } from "../../../shared/platform/types";
 import { showChatSurface } from "../../../shared/desktop/chatWindow";
-import { TRANSPARENT_BACKGROUND_NAME } from "../../../shared/constants";
 import { ChatInitializationDialog } from "../../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../../chat-startup/useChatInitialization";
 
 export function StoryLaunchButton({
-  task,
-  template,
-  disabled,
+  storyPath,
+  historyPath = "",
+  label = "运行剧本",
+  disabled = false,
 }: {
-  task: StoryGenerationTask;
-  template?: TemplateSummary;
-  disabled: boolean;
+  storyPath: string;
+  historyPath?: string;
+  label?: string;
+  disabled?: boolean;
 }) {
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -25,7 +26,7 @@ export function StoryLaunchButton({
   const [error, setError] = useState("");
   const launched = useRef<ChatSnapshot | null>(null);
   const launch = async () => {
-    if (!template || init.initializationPending) return;
+    if (!storyPath || init.initializationPending) return;
     setError("");
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
@@ -38,22 +39,13 @@ export function StoryLaunchButton({
           }
         }
         if (!launched.current || status.state === "idle") {
-          launched.current = await launchChat(
-            {
-              templateId: template.id,
-              templateName: template.name,
-              characters: [],
-              backgroundName: TRANSPARENT_BACKGROUND_NAME,
-              historyPath: "",
-              resetHistory: true,
-            },
-            options,
-          );
+          launched.current = await launchChat(await prepareStoryLaunch(storyPath, historyPath), options);
         }
-        const story = await startStorySession(task.draftPath);
+        const story = await startStorySession(storyPath);
         return { ...launched.current, ...story };
       });
       client.setQueryData(chatQueryKey, snapshot);
+      void client.invalidateQueries({ queryKey: storyLibraryQueryKey });
       await showChatSurface({ navigate, snapshot });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -64,10 +56,10 @@ export function StoryLaunchButton({
       <Button
         variant="primary"
         type="button"
-        disabled={disabled || !template || init.initializationPending}
+        disabled={disabled || !storyPath || init.initializationPending}
         onClick={() => void launch()}
       >
-        {init.initializationPending ? "正在启动…" : "运行剧本"}
+        {init.initializationPending ? "正在启动…" : label}
       </Button>
       {error && (
         <p className="story-generator-error" role="alert">

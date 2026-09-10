@@ -176,6 +176,10 @@ def create_chat_startup_context(
                 character_names=character_names,
             )
 
+    from application.story.prompt_runtime import install_story_prompt_hooks
+
+    install_story_prompt_hooks(llm_manager, config, str(args.history or ""))
+
     with startup_phase("chat.init_hooks"):
         if plugin_manager is not None:
             init_context = runtime.InitChatContext(

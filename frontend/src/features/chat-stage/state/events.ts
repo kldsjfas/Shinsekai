@@ -186,7 +186,6 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
       return withResolvedLayers({
         ...state,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        options: event.story.options,
         story: event.story,
       });
     case "story.node.entered":

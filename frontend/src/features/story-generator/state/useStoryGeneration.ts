@@ -1,12 +1,12 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   cancelStoryGeneration,
   getStoryGeneration,
   getStoryPreview,
   regenerateStoryGeneration,
-  resumeStoryGeneration,
   startStoryGeneration,
+  storyLibraryQueryKey,
 } from "../../../entities/story/repository";
 import type {
   StoryGenerationInput,
@@ -18,7 +18,7 @@ import type {
 const storageKey = "shinsekai.story-generation.task";
 function savedTask() {
   try {
-    return sessionStorage.getItem(storageKey) ?? "";
+    return localStorage.getItem(storageKey) ?? sessionStorage.getItem(storageKey) ?? "";
   } catch {
     return "";
   }
@@ -35,9 +35,12 @@ export function useStoryGeneration() {
     queryKey: ["story-generation", id],
     queryFn: () => getStoryGeneration(id),
     enabled: !!id,
-    refetchInterval: (query) => (["queued", "running"].includes(query.state.data?.status ?? "") ? 1500 : false),
+    refetchInterval: (query) => (!["succeeded", "cancelled"].includes(query.state.data?.status ?? "") ? 1500 : false),
   });
   const task = taskQuery.data ?? null;
+  useEffect(() => {
+    if (task?.status === "succeeded") void client.invalidateQueries({ queryKey: storyLibraryQueryKey });
+  }, [client, task?.id, task?.status]);
   const previewQuery = useQuery({
     queryKey: ["story-preview", id, task?.updatedAt, task?.completedStages, task?.artifactHashes],
     queryFn: () => getStoryPreview(id),
@@ -47,9 +50,13 @@ export function useStoryGeneration() {
     void client.cancelQueries({ queryKey: ["story-generation", next.id], exact: true });
     activeId.current = next.id;
     setId(next.id);
-    client.setQueryData(["story-generation", next.id], next);
+    client.setQueryData<StoryGenerationTask>(["story-generation", next.id], (current) =>
+      current && current.updatedAt > next.updatedAt ? current : next,
+    );
+    if (next.status === "succeeded") void client.invalidateQueries({ queryKey: storyLibraryQueryKey });
     try {
-      sessionStorage.setItem(storageKey, next.id);
+      localStorage.setItem(storageKey, next.id);
+      sessionStorage.removeItem(storageKey);
     } catch {
       /* In-memory state remains available. */
     }
@@ -79,8 +86,8 @@ export function useStoryGeneration() {
     preview: previewQuery.data,
     pending,
     error:
-      error ||
-      (task?.status === "cancelled" ? "" : task?.error?.message) ||
+      (!pending && task?.status !== "cancelled" ? error : "") ||
+      (pending || task?.status === "cancelled" ? "" : task?.error?.message) ||
       taskQuery.error?.message ||
       previewQuery.error?.message ||
       "",
@@ -89,7 +96,6 @@ export function useStoryGeneration() {
       activeId.current = "";
       return run(() => startStoryGeneration(input, { onTaskUpdate }));
     },
-    resume: () => run(() => resumeStoryGeneration(id, { onTaskUpdate })),
     regenerate: (stage: StoryGenerationStage) => run(() => regenerateStoryGeneration(id, stage, { onTaskUpdate })),
     cancel: async () => {
       try {

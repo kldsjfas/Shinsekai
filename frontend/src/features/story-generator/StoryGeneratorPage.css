@@ -1,4 +1,29 @@
 /* Embedded in the template workspace: shared page typography without a second sticky bar. */
+.story-library-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.story-library-header {
+  justify-content: space-between;
+}
+.story-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.story-library-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: var(--space-4);
+  overflow-wrap: anywhere;
+}
+.story-library-card h3 {
+  margin-top: 0;
+}
 .story-generator-page > .page__header {
   position: static;
   margin: 0;

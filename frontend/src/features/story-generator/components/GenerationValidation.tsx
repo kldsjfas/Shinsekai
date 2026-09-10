@@ -9,7 +9,11 @@ export function GenerationValidation({ task }: { task: StoryGenerationTask }) {
       {task.validation ? (
         <>
           <p className={task.validation.valid ? "story-generator-pass" : "story-generator-error"}>
-            {task.validation.valid ? "已通过确定性校验" : "请修复问题后再运行"}
+            {task.validation.valid
+              ? "已通过确定性校验"
+              : task.cancelRequested || task.status === "cancelled"
+                ? "已停止修复，当前剧本尚未通过检查"
+                : "正在自动修复问题，通过检查后即可游玩"}
           </p>
           <p className="section__description">
             可达结局 {Math.round(task.validation.endingCoverage * 100)}% · 检查了 {task.validation.exploredStates}{" "}

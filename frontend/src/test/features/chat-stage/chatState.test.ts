@@ -195,7 +195,7 @@ describe("chatStageReducer", () => {
     expect(restored.optimisticSubmission).toBeUndefined();
   });
 
-  it("clears an optimistic story choice when the next story state is published", () => {
+  it("keeps normal chat presentation while story progress changes", () => {
     const submitted = chatStageReducer(
       {
         ...emptyChatState,
@@ -253,12 +253,12 @@ describe("chatStageReducer", () => {
       type: "event",
     });
 
-    expect(replaced.optimisticSubmission).toBeUndefined();
+    expect(replaced.optimisticSubmission).toEqual(submitted.optimisticSubmission);
     expect(replaced.story?.currentNodeId).toBe("ending");
     expect(replaced.options).toEqual([]);
   });
 
-  it("replaces optimistic story presentation when a polled snapshot reaches an ending", () => {
+  it("keeps normal chat presentation when a story-only snapshot reaches an ending", () => {
     const submitted = chatStageReducer(
       {
         ...emptyChatState,
@@ -318,7 +318,7 @@ describe("chatStageReducer", () => {
       type: "event",
     });
 
-    expect(polled.optimisticSubmission).toBeUndefined();
+    expect(polled.optimisticSubmission).toEqual(submitted.optimisticSubmission);
     expect(polled.story?.ending).toEqual({ id: "ending", title: "Rain" });
   });
 

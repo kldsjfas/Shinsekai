@@ -1,5 +1,6 @@
 import type { ChatSnapshot, ShinsekaiPlatform, StoryGenerationTask, TaskProgressOptions } from "./types";
 import { previewStoryGraph } from "./previewStoryGraph";
+import { TRANSPARENT_BACKGROUND_NAME } from "../constants";
 
 function previewStoryGeneration(id: string, status: StoryGenerationTask["status"]): StoryGenerationTask {
   const now = Date.now();
@@ -42,6 +43,8 @@ export function createStoryPreviewPlatform(
   setChat: (snapshot: ChatSnapshot) => void,
 ): ShinsekaiPlatform["story"] {
   const tasks = new Map<string, StoryGenerationTask>();
+  const saves = new Map<string, ChatSnapshot>();
+  let activeStoryPath = "";
   const read = (id: string) => {
     const task = tasks.get(id);
     if (!task) throw new Error("预览任务已过期，请重新生成。");
@@ -66,6 +69,40 @@ export function createStoryPreviewPlatform(
     return task;
   };
   return {
+    list: async () => {
+      if (activeStoryPath && getChat().story) saves.set(activeStoryPath, getChat());
+      return [...tasks.values()]
+        .filter((task) => task.status === "succeeded")
+        .map((task) => {
+          const save = saves.get(task.draftPath);
+          return {
+            id: task.id,
+            title: previewStoryGraph.title,
+            storyPath: task.draftPath,
+            characters: (task.options.characters as string[]) ?? [],
+            backgrounds: [String(task.options.backgroundName || TRANSPARENT_BACKGROUND_NAME)],
+            historyPath: save?.historyPath || "",
+            currentNodeTitle: save?.story?.currentNodeTitle || "",
+            updatedAt: task.updatedAt,
+          };
+        });
+    },
+    prepareLaunch: async (storyPath, historyPath = "") => {
+      const task = [...tasks.values()].find((item) => item.draftPath === storyPath);
+      if (!task) throw new Error("剧本不存在，请刷新后重试。");
+      return {
+        templateId: "",
+        templateName: previewStoryGraph.title,
+        scenario: task.synopsis || previewStoryGraph.title,
+        system: "根据当前剧本场景呈现人物对话和旁白。",
+        characters: (task.options.characters as string[]) ?? [],
+        backgroundName: String(task.options.backgroundName || TRANSPARENT_BACKGROUND_NAME),
+        characterPromptMode: task.options.characterPromptMode === "compact" ? "compact" : "full",
+        primaryCharacters: (task.options.primaryCharacters as string[]) ?? [],
+        historyPath,
+        resetHistory: !historyPath,
+      };
+    },
     getGeneration: async (id) => read(id),
     getPreview: async (id) => {
       read(id);
@@ -85,7 +122,14 @@ export function createStoryPreviewPlatform(
         },
         options,
       ),
-    startSession: async () => {
+    startSession: async (storyPath) => {
+      activeStoryPath = storyPath;
+      const saved = saves.get(storyPath);
+      if (saved && saved.historyPath === getChat().historyPath) {
+        const recovered = { ...getChat(), story: saved.story, historyEntries: saved.historyEntries };
+        setChat(recovered);
+        return recovered;
+      }
       const snapshot = {
         ...getChat(),
         story: {
@@ -106,6 +150,7 @@ export function createStoryPreviewPlatform(
         },
       };
       setChat(snapshot);
+      saves.set(storyPath, snapshot);
       return snapshot;
     },
   };

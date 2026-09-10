@@ -17,7 +17,7 @@ export function StoryFeatureGate({ children }: { children: ReactNode }) {
   return (
     <section className="section">
       <h2 className="section__title">启用剧本模式</h2>
-      <p className="section__description">从模板创作有剧情节点和结局的互动故事。生成需要使用已配置的语言模型。</p>
+      <p className="section__description">选择人物和背景创作互动故事，或继续已有剧本。生成需要使用已配置的语言模型。</p>
       {config.isPending ? (
         <p className="section__description" role="status">
           正在读取设置…

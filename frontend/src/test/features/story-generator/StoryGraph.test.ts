@@ -32,5 +32,13 @@ describe("story preview and session transport", () => {
     await platform.story.startSession("data/stories/example/draft.json");
     expect(String(fetch.mock.calls[1][0])).toContain("/api/story/start");
     expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ storyPath: "data/stories/example/draft.json" });
+    await platform.story.list();
+    expect(String(fetch.mock.calls[2][0])).toContain("/api/story/library");
+    await platform.story.prepareLaunch("data/stories/example/draft.json", "data/chat_history/saved");
+    expect(String(fetch.mock.calls[3][0])).toContain("/api/story/launch-payload");
+    expect(JSON.parse(fetch.mock.calls[3][1].body)).toEqual({
+      storyPath: "data/stories/example/draft.json",
+      historyPath: "data/chat_history/saved",
+    });
   });
 });

@@ -1,7 +1,9 @@
+import { CharacterPicker } from "./CharacterPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { updateCharacterRoles } from "./characterRoles";
 import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
+import { Play, RotateCw, Save, Sparkles } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../entities/character/repository";
@@ -55,7 +57,6 @@ import {
   buildTemplateSummary,
   composeTemplateContent,
   createTemplateDraft,
-  getCharacterChipStyle,
   normalizeTemplateSummary,
   synchronizeChatLaunchPayloadWithSession,
   synchronizeTemplateLaunchSessionWithSnapshot,
@@ -660,15 +661,9 @@ export function TemplateEditorPage() {
   const updateSelectedCharacters = (next: string[], options?: { preservePromptMode?: boolean }) => {
     setSelectedCharacters(next);
     if (!options?.preservePromptMode) {
-      const addedCharacter = next.some((name) => !selectedCharacters.includes(name));
-      const remainingPrimaryCharacters = primaryCharacters.filter((name) => next.includes(name));
-      const keepCurrentMode =
-        next.length > 4 &&
-        !addedCharacter &&
-        Boolean(characterPromptMode) &&
-        (characterPromptMode === "full" || remainingPrimaryCharacters.length > 0);
-      setCharacterPromptMode(next.length <= 4 ? "full" : keepCurrentMode ? characterPromptMode : undefined);
-      setPrimaryCharacters(next.length <= 4 ? next : remainingPrimaryCharacters);
+      const roles = updateCharacterRoles(selectedCharacters, next, primaryCharacters, characterPromptMode);
+      setCharacterPromptMode(roles.mode);
+      setPrimaryCharacters(roles.primary);
     }
     setInitSpritePath((path) =>
       compatibleInitialSpritePath({
@@ -707,12 +702,6 @@ export function TemplateEditorPage() {
         title: t("template.primaryCharacters.title"),
       });
     }
-  };
-
-  const toggleCharacter = (name: string, checked: boolean) => {
-    updateSelectedCharacters(
-      checked ? [...new Set([...selectedCharacters, name])] : selectedCharacters.filter((item) => item !== name),
-    );
   };
 
   const toggleEffect = (name: string, checked: boolean) => {
@@ -858,39 +847,11 @@ export function TemplateEditorPage() {
         <section className="template-workbench__main">
           <section className="template-panel template-panel--characters">
             <div className="template-character-picker">
-              <div className="template-character-picker__header">
-                <span className="template-panel__label">{t("template.field.characters")}</span>
-                <Button
-                  disabled={!characters.length}
-                  icon={<Users aria-hidden className="button__icon" />}
-                  onClick={() => {
-                    const next = characters.map((character) => character.name);
-                    updateSelectedCharacters(next);
-                  }}
-                  variant="ghost"
-                >
-                  {t("template.action.selectAllCharacters")}
-                </Button>
-              </div>
-              <div aria-label={t("template.field.characters")} className="template-character-grid" role="group">
-                {characters.map((character) => {
-                  const isSelected = selectedCharacterNames.has(character.name);
-                  return (
-                    <button
-                      aria-pressed={isSelected}
-                      className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
-                      key={character.name}
-                      onClick={() => toggleCharacter(character.name, !isSelected)}
-                      style={getCharacterChipStyle(character.color)}
-                      title={character.name}
-                      type="button"
-                    >
-                      <span aria-hidden className="template-character-card__dot" />
-                      <span className="template-character-card__name">{character.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <CharacterPicker
+                characters={characters}
+                selected={selectedCharacters}
+                onChange={updateSelectedCharacters}
+              />
 
               <CharacterRoleStatus
                 mode={characterPromptMode}

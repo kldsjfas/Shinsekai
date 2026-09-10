@@ -59,6 +59,25 @@ export function GenerationStages({ task, preview }: { task: StoryGenerationTask;
         {taskStatus[task.status]}
         {task.currentStage === "repair" ? " · 正在修复校验问题" : ""}
       </p>
+      {task.recovery && !task.cancelRequested && task.status === "running" && (
+        <div className="section__description" role="status">
+          <p>{task.recovery.message}。无需手动继续，离开页面后后台仍会处理。</p>
+          {!!task.recovery.attempt && (
+            <p>
+              已自动恢复 {task.recovery.attempt} 次 · 已尝试修复 {task.repairAttempts} 次
+            </p>
+          )}
+          {!!task.recovery.nextRetryAt && (
+            <p>下次自动重试：{new Date(task.recovery.nextRetryAt).toLocaleTimeString()}</p>
+          )}
+          {task.recovery.lastError && (
+            <details>
+              <summary>查看本次错误</summary>
+              <p>{task.recovery.lastError.message}</p>
+            </details>
+          )}
+        </div>
+      )}
       <ol className="story-generator-stages">
         {stages.map((stage) => {
           const completed = task.completedStages.includes(stage.id);

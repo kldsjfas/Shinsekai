@@ -1,100 +1,159 @@
+import { CharacterPicker } from "../../template-editor/CharacterPicker";
 import { Button, Select, TextArea } from "../../../shared/ui";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { backgroundsQueryKey, listBackgrounds } from "../../../entities/background/repository";
-import type { StoryGenerationInput, TemplateSummary } from "../../../shared/platform/types";
+import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../../entities/character/repository";
+import type { Character, CharacterPromptMode, StoryGenerationInput } from "../../../shared/platform/types";
+import { TRANSPARENT_BACKGROUND_NAME } from "../../../shared/constants";
+import { PrimaryCharacterDialog } from "../../template-editor/PrimaryCharacterDialog";
+import { CharacterRoleStatus } from "../../template-editor/CharacterRoleStatus";
+import { updateCharacterRoles } from "../../template-editor/characterRoles";
 
 export function StorySetupForm({
-  templates,
   pending,
   onStart,
 }: {
-  templates: TemplateSummary[];
   pending: boolean;
   onStart: (input: StoryGenerationInput) => void;
 }) {
-  const [templateId, setTemplateId] = useState("");
+  const client = useQueryClient();
+  const [selected, setSelected] = useState<string[]>([]);
+  const [primary, setPrimary] = useState<string[]>([]);
+  const [mode, setMode] = useState<CharacterPromptMode | undefined>("full");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [background, setBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [synopsis, setSynopsis] = useState("");
+  const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });
   const backgrounds = useQuery({ queryKey: backgroundsQueryKey, queryFn: listBackgrounds });
-  const template = templates.find((item) => item.id === templateId);
+  const selectedCharacters = useMemo(
+    () => selected.flatMap((name) => characters.data?.find((item) => item.name === name) ?? []),
+    [characters.data, selected],
+  );
+  const briefs = useMutation({
+    mutationFn: async (names: string[]) => {
+      const result = await ensureCharacterBriefs(selected.filter((name) => !names.includes(name)));
+      const updated = new Map(result.characters.map((character) => [character.name, character]));
+      client.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        current.map((character) => updated.get(character.name) ?? character),
+      );
+      setPrimary(names);
+      setMode(names.length === selected.length ? "full" : "compact");
+      setDialogOpen(false);
+    },
+  });
+  const busy = pending || briefs.isPending;
+  const updateSelected = (next: string[]) => {
+    const roles = updateCharacterRoles(selected, next, primary, mode);
+    setSelected(next);
+    setMode(roles.mode);
+    setPrimary(roles.primary);
+  };
+  const useAll = () => {
+    setPrimary(selected);
+    setMode("full");
+    setDialogOpen(false);
+  };
   return (
     <section className="section" aria-labelledby="story-setup-title">
       <h2 className="section__title" id="story-setup-title">
-        1. 选择模板，确定故事
+        选择人物和背景
       </h2>
+      {characters.isPending && <p role="status">正在加载人物…</p>}
+      {characters.isSuccess && !characters.data.length && (
+        <p className="section__description">还没有人物，请先到人物页创建人物。</p>
+      )}
+      <CharacterPicker
+        characters={characters.data ?? []}
+        selected={selected}
+        onChange={updateSelected}
+        disabled={busy}
+      />
+      <CharacterRoleStatus
+        disabled={busy}
+        mode={mode}
+        onConfigure={() => {
+          briefs.reset();
+          setDialogOpen(true);
+        }}
+        onUseAll={useAll}
+        selectedCount={selected.length}
+        primaryCount={mode === "full" ? selected.length : primary.length}
+      />
       <label className="story-setup-field">
-        故事模板
+        故事背景
         <Select
-          aria-label="故事模板"
-          value={templateId}
-          disabled={pending}
-          onChange={(event) => {
-            const next = templates.find((item) => item.id === event.target.value);
-            setTemplateId(event.target.value);
-            setSynopsis(next?.scenario?.trim() || next?.content || "");
-          }}
+          aria-label="故事背景"
+          value={background}
+          disabled={busy || !backgrounds.isSuccess}
+          onChange={(event) => setBackground(event.target.value)}
         >
-          <option value="">请选择已有模板</option>
-          {templates.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
+          <option value={TRANSPARENT_BACKGROUND_NAME}>透明背景</option>
+          {backgrounds.data
+            ?.filter((item) => item.name !== TRANSPARENT_BACKGROUND_NAME)
+            .map((item) => (
+              <option key={item.name} value={item.name}>
+                {item.name}
+              </option>
+            ))}
         </Select>
       </label>
-      <p className="section__description">模板提供故事起点。你可以在下面调整人物、冲突和结局方向，原模板会保留。</p>
       <label className="story-setup-field">
-        剧情梗概
+        剧情梗概（选填）
         <TextArea
           aria-label="剧情梗概"
-          disabled={pending}
+          disabled={busy}
           maxLength={20000}
-          rows={6}
+          rows={5}
           value={synopsis}
           onChange={(event) => setSynopsis(event.target.value)}
-          placeholder="选择模板后，在这里调整希望发生的故事……"
+          placeholder="写下故事的起点、冲突或结局方向，也可以让 AI 根据人物和背景创作。"
         />
       </label>
-      <p className="section__description">
-        可用地点：
-        {backgrounds.isPending
-          ? "加载中…"
-          : backgrounds.data
-              ?.filter((item) => item.sprites.length)
-              .map((item) => item.name)
-              .join("、") || "暂无背景，生成时将自由描述地点"}
-      </p>
-      {backgrounds.isError && (
-        <p className="section__description" role="alert">
-          地点加载失败。
-          <Button type="button" onClick={() => void backgrounds.refetch()}>
-            重试
-          </Button>
-        </p>
+      {[characters, backgrounds].map(
+        (query, index) =>
+          query.isError && (
+            <p key={index} className="story-generator-error" role="alert">
+              {query.error.message}
+              <Button onClick={() => void query.refetch()}>重试</Button>
+            </p>
+          ),
       )}
       <div className="story-generator-actions">
         <Button
           variant="primary"
-          type="button"
-          disabled={pending || !template || !synopsis.trim() || !backgrounds.isSuccess}
-          onClick={() =>
+          disabled={busy || !selected.length || !characters.isSuccess || !backgrounds.isSuccess}
+          onClick={() => {
+            if (!mode) {
+              setDialogOpen(true);
+              return;
+            }
             onStart({
-              synopsis,
+              synopsis: synopsis.trim(),
               options: {
                 targetLength: "short",
-                controlMode: "deterministic",
-                templateId: template!.id,
+                controlMode: "prompt",
+                characters: selected,
+                backgroundName: background,
+                characterPromptMode: mode,
+                primaryCharacters: mode === "full" ? selected : primary,
               },
-              resourceCatalog: {
-                backgrounds: (backgrounds.data ?? []).filter((item) => item.sprites.length).map((item) => item.name),
-              },
-            })
-          }
+            });
+          }}
         >
           {pending ? "生成中…" : "开始生成"}
         </Button>
-        <small>各阶段完成后可查看内容。</small>
+        <small>生成后自动保存在已有剧本中。</small>
       </div>
+      <PrimaryCharacterDialog
+        characters={selectedCharacters}
+        initialPrimaryCharacters={primary}
+        open={dialogOpen}
+        error={briefs.error?.message}
+        pending={briefs.isPending}
+        onUseAll={useAll}
+        onConfirm={(names) => briefs.mutate(names)}
+      />
     </section>
   );
 }
