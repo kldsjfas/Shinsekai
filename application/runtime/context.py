@@ -82,6 +82,10 @@ class AppRuntime:
     opencc: Any  # OpenCC
     background: Any = None
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
+    effect_image_keyword_map: dict = field(default_factory=dict)  # keyword → image_path
+    effect_image_audio_keyword_map: dict = field(
+        default_factory=dict
+    )  # keyword → bound audio_path
     ui_playback: UiPlaybackBridge = field(default_factory=UiPlaybackBridge)
     chat_turn_service: ChatTurnService = field(default_factory=ChatTurnService)
     tool_confirmations: ToolConfirmationController = field(

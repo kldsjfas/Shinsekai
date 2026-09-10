@@ -23,6 +23,10 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
     """Use configured fixed audio when available, otherwise synthesize speech."""
 
     def generate(self, request: TtsGenerationRequest) -> Iterator[str]:
+        if not str(request.message.text or "").strip():
+            yield ""
+            return
+
         manager = request.runtime.tts_manager
         if manager is None:
             yield self._fallback_audio_path(request)

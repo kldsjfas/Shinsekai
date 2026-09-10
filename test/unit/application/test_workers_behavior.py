@@ -15,6 +15,7 @@ from application.runtime.workers import (
     PresentationWorker,
     DialogMediaWorker,
 )
+from application.runtime.workers.llm_worker import _image_effect_fallback
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
 from ai.llm.llm_manager import LLMManager
 from sdk.messages import LLMDialogMessage, PresentationMessage, UserInputMessage
@@ -164,6 +165,58 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
         user_attachments=[],
         user_input_text="hello",
     )
+
+
+def test_llm_worker_adds_selected_image_effect_for_confirmed_user_action() -> None:
+    user_input_queue = CountingQueue()
+    dialog_queue = CountingQueue()
+    user_input_queue.put(UserInputMessage(text="（拿起笔记本）"))
+    user_input_queue.put(None)
+
+    runtime = _make_app_runtime(dialog_queue=dialog_queue)
+    runtime.effect_image_keyword_map = {
+        "笔记本": "data/effects/custom/item.png",
+        "笔记": "data/effects/custom/item.png",
+        "笔记本，笔记": "data/effects/custom/item.png",
+    }
+    runtime.config.config.api_config.is_streaming = False
+    runtime.llm_manager.chat.return_value = (
+        '{"dialog":['
+        '{"character_name":"旁白","speech":"你手里拿着一本旧笔记本。","sprite":"-1"},'
+        '{"character_name":"Alice","speech":"看看里面吧。","sprite":"01"}'
+        "]}"
+    )
+
+    LLMWorker(user_input_queue, dialog_queue).run()
+
+    first = dialog_queue.get_nowait()
+    second = dialog_queue.get_nowait()
+    assert first.effect == "笔记本"
+    assert second.effect == ""
+
+
+def test_image_effect_fallback_accepts_seeing_selected_image() -> None:
+    assert _image_effect_fallback(
+        "（看到腹上的花纹为“蛇”）",
+        {"腹上的花纹为“蛇”": "data/effects/custom/snake.png"},
+    ) == ("腹上的花纹为“蛇”", ("腹上的花纹为“蛇”",))
+
+
+@pytest.mark.parametrize(
+    "user_text",
+    [
+        "旁边有一本笔记本",
+        "我想拿起笔记本",
+        "我没有拿起笔记本",
+        "想起以前拿起过笔记本",
+        "我拿起杯子，想起了以前的笔记本",
+    ],
+)
+def test_image_effect_fallback_ignores_non_actual_mentions(user_text: str) -> None:
+    assert _image_effect_fallback(
+        user_text,
+        {"笔记本": "data/effects/custom/item.png"},
+    ) is None
 
 
 def test_llm_worker_does_not_requeue_dialogue_after_stream_repair() -> None:

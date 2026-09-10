@@ -170,6 +170,68 @@ def test_generate_template_summary_uses_full_primary_profile_and_supporting_brie
     assert "sprite (string, required)" not in summary["system"]
 
 
+def test_generate_template_summary_uses_only_labels_from_selected_effects(monkeypatch):
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=[],
+        emotion_tags="",
+        character_setting="Alice profile",
+    )
+    effect = SimpleNamespace(
+        name="Items",
+        audio_tags="特效 1：rain\n",
+        audio_list=["rain.wav"],
+        image_tags="图片 1：letter\n",
+        image_list=["letter.png"],
+        image_audio_list=[],
+    )
+    config_manager = SimpleNamespace(
+        get_character_by_name=lambda _name: character,
+        list_effects=lambda: [effect],
+    )
+    monkeypatch.setattr("ai.llm.template_generator.config_manager", config_manager)
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **_kwargs: f"<{key}>\n",
+    )
+    monkeypatch.setattr(
+        "application.chat.build_effect_context.tr_i18n",
+        lambda _key: "Available labels",
+    )
+    state = SimpleNamespace(
+        config_manager=config_manager,
+        template_generator=TemplateGenerator(output_contract_patches=[]),
+    )
+
+    selected = _generate_template_summary(
+        state,
+        {
+            "backgroundName": "",
+            "characters": ["Alice"],
+            "effectNames": ["Items", "Missing"],
+            "useEffect": True,
+            "useTranslation": False,
+        },
+    )
+    unselected = _generate_template_summary(
+        state,
+        {
+            "backgroundName": "",
+            "characters": ["Alice"],
+            "effectNames": [],
+            "useEffect": True,
+            "useTranslation": False,
+        },
+    )
+
+    assert "- rain\n- letter" in selected["system"]
+    assert "<json_line_effect>" in selected["system"]
+    assert "<r_effect>" in selected["system"]
+    assert "<effects_header>" not in unselected["system"]
+    assert "<json_line_effect>" not in unselected["system"]
+    assert "<r_effect>" not in unselected["system"]
+
+
 def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
     config_manager = SimpleNamespace(get_character_by_name=lambda _name: None)
     monkeypatch.setattr(

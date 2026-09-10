@@ -23,8 +23,48 @@ SOUND_EFFECTS_PATH = {
     "ATTENTION": "./assets/system/sound/attention.wav",
 }
 
+IMAGE_EFFECT_DURATION_MS = 8_800
+
 _config_manager = None
 logger = logging.getLogger(__name__)
+
+_EFFECT_KEYWORD_FORMATTING_RE = re.compile(r"[\s\"'“”‘’「」『』【】（）()：:，,、。.!！?？]+")
+
+
+def _normalize_effect_keyword(value: Any) -> str:
+    return _EFFECT_KEYWORD_FORMATTING_RE.sub("", str(value or "").casefold())
+
+
+def _find_effect_keyword_path(
+    keyword_map: dict[Any, Any],
+    keyword: str,
+    *,
+    allow_contains: bool = False,
+) -> tuple[str, str]:
+    normalized_keyword = _normalize_effect_keyword(keyword)
+    if not normalized_keyword:
+        return "", ""
+
+    candidates: list[tuple[int, str, str]] = []
+    for configured_keyword, path in keyword_map.items():
+        configured = str(configured_keyword or "").strip()
+        resolved_path = str(path or "").strip()
+        normalized_configured = _normalize_effect_keyword(configured)
+        if not normalized_configured or not resolved_path:
+            continue
+        if normalized_configured == normalized_keyword:
+            return configured, resolved_path
+        if (
+            allow_contains
+            and len(normalized_configured) >= 2
+            and normalized_configured in normalized_keyword
+        ):
+            candidates.append((len(normalized_configured), configured, resolved_path))
+
+    if not candidates:
+        return "", ""
+    _, configured, resolved_path = max(candidates, key=lambda item: item[0])
+    return configured, resolved_path
 
 
 def _get_config_manager():
@@ -426,6 +466,20 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
         self._sink.emit({"type": "effect.play", "url": self._media_url(str(path))})
 
+    def show_image_effect(self, keyword: str, image_effect_path: str) -> None:
+        raw_path = str(image_effect_path or "").strip()
+        if not raw_path:
+            return
+        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
+        self._sink.emit(
+            {
+                "type": "effect.image.show",
+                "url": self._media_url(str(path)),
+                "label": str(keyword or "").strip(),
+                "durationMs": IMAGE_EFFECT_DURATION_MS,
+            }
+        )
+
     def start_loop_effect(self, keyword: str, audio_path: str) -> None:
         key = str(keyword or "").strip()
         raw_path = str(audio_path or "").strip()
@@ -595,23 +649,33 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         if not keyword:
             return
         audio_path = str(SOUND_EFFECTS_PATH.get(keyword.upper()) or "").strip()
-        if not audio_path:
-            try:
-                from application.runtime.context import get_app_runtime
+        image_path = ""
+        image_audio_path = ""
+        try:
+            from application.runtime.context import get_app_runtime
 
-                keyword_map = getattr(get_app_runtime(), "effect_keyword_map", {}) or {}
-                audio_path = next(
-                    (
-                        str(path or "").strip()
-                        for configured_keyword, path in keyword_map.items()
-                        if str(configured_keyword or "").strip().lower()
-                        == keyword.lower()
-                    ),
-                    "",
+            runtime = get_app_runtime()
+            if not audio_path:
+                _, audio_path = _find_effect_keyword_path(
+                    getattr(runtime, "effect_keyword_map", {}) or {},
+                    keyword,
                 )
-            except Exception:
-                audio_path = ""
-        if mode != "stop" and not audio_path:
+            matched_image_keyword, image_path = _find_effect_keyword_path(
+                getattr(runtime, "effect_image_keyword_map", {}) or {},
+                keyword,
+                allow_contains=True,
+            )
+            if matched_image_keyword:
+                _, image_audio_path = _find_effect_keyword_path(
+                    getattr(runtime, "effect_image_audio_keyword_map", {}) or {},
+                    matched_image_keyword,
+                )
+        except Exception:
+            image_path = ""
+            image_audio_path = ""
+        if image_audio_path:
+            audio_path = image_audio_path
+        if mode != "stop" and not audio_path and not image_path:
             logger.warning("chat.effect.unresolved effect=%r keyword=%r", effect, keyword)
             return False
         if mode == "loop":
@@ -621,8 +685,11 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             emitted = keyword in self._looping_effects
             self.stop_loop_effect(keyword)
         else:
-            self.play_sound_effect(audio_path)
-            emitted = True
+            if audio_path:
+                self.play_sound_effect(audio_path)
+            if image_path:
+                self.show_image_effect(keyword, image_path)
+            emitted = bool(audio_path or image_path)
         if emitted:
             logger.info(
                 "chat.effect.emitted effect=%r mode=%s keyword=%r path=%r",

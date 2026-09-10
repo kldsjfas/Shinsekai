@@ -190,6 +190,64 @@ def test_streaming_presenter_resolves_explicit_configured_effects(tmp_path) -> N
     ]
 
 
+def test_streaming_presenter_resolves_image_and_audio_for_the_same_keyword(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    audio = tmp_path / "item.wav"
+    image = tmp_path / "item.png"
+    bound_audio = tmp_path / "bound-item.wav"
+    audio.write_bytes(b"wav")
+    image.write_bytes(b"png")
+    bound_audio.write_bytes(b"wav")
+    runtime = type(
+        "Runtime",
+        (),
+        {
+            "effect_keyword_map": {"获得钥匙": str(audio)},
+            "effect_image_keyword_map": {"获得钥匙": str(image)},
+            "effect_image_audio_keyword_map": {"获得钥匙": str(bound_audio)},
+        },
+    )()
+
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        assert presenter.resolve_effect("获得钥匙", {}, after_dialog=False)
+
+    assert [event["type"] for event in sink.events] == ["effect.play", "effect.image.show"]
+    assert "bound-item.wav" in sink.events[0]["url"]
+    assert sink.events[-1]["durationMs"] == 8_800
+    assert sink.events[-1]["label"] == "获得钥匙"
+
+
+def test_streaming_presenter_tolerantly_matches_the_longest_image_keyword(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    generic_image = tmp_path / "note.png"
+    specific_image = tmp_path / "notebook.png"
+    bound_audio = tmp_path / "notebook.wav"
+    generic_image.write_bytes(b"png")
+    specific_image.write_bytes(b"png")
+    bound_audio.write_bytes(b"wav")
+    runtime = type(
+        "Runtime",
+        (),
+        {
+            "effect_keyword_map": {},
+            "effect_image_keyword_map": {
+                "笔记": str(generic_image),
+                "笔记本": str(specific_image),
+            },
+            "effect_image_audio_keyword_map": {"笔记本": str(bound_audio)},
+        },
+    )()
+
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        assert presenter.resolve_effect("获得了“笔记本”", {}, after_dialog=False)
+
+    assert [event["type"] for event in sink.events] == ["effect.play", "effect.image.show"]
+    assert "notebook.wav" in sink.events[0]["url"]
+    assert "notebook.png" in sink.events[1]["url"]
+
+
 def test_streaming_presenter_keeps_character_slot_across_expression_changes() -> None:
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink)

@@ -24,6 +24,7 @@ import {
   BusyLayer,
   CgLayer,
   DialogLayer,
+  EffectImageLayer,
   NotificationLayer,
   OptionsLayer,
   SpriteLayer,
@@ -710,6 +711,7 @@ export function ChatStagePage() {
           onPlaybackSignal={handlePlaybackSignal}
         />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
+        <EffectImageLayer effect={state.effectImage} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
           onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}

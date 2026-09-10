@@ -68,6 +68,64 @@ import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
 
+const effectHintHeaders = ["已选特效提示：", "可用音效：", "音效触发时机与模式："];
+const effectHintBoundaries = [
+  "立绘说明:",
+  "Sprite sheets:",
+  "立ち絵の説明:",
+  "可调用工具",
+  "Callable tools",
+  "呼び出し可能なツール",
+  "要求：",
+  "Requirements:",
+  "要件：",
+];
+
+function findLineMarker(text: string, markers: string[], from = 0) {
+  const positions = markers
+    .map((marker) => {
+      let index = text.indexOf(marker, from);
+      while (index > 0 && text[index - 1] !== "\n") {
+        index = text.indexOf(marker, index + marker.length);
+      }
+      return index;
+    })
+    .filter((index) => index >= 0);
+  return positions.length ? Math.min(...positions) : -1;
+}
+
+function stripLegacyEffectHints(system: string) {
+  let cleaned = system;
+  let start = findLineMarker(cleaned, effectHintHeaders);
+  while (start !== -1) {
+    const end = findLineMarker(cleaned, effectHintBoundaries, start);
+    const before = cleaned.slice(0, start).trimEnd();
+    const after = end === -1 ? "" : cleaned.slice(end).trimStart();
+    cleaned = before && after ? `${before}\n\n${after}` : before || after;
+    start = findLineMarker(cleaned, effectHintHeaders);
+  }
+
+  const lines = cleaned.split("\n");
+  const normalized: string[] = [];
+  const builtInFields = ["- character_name (", "- sprite (", "- speech (", "- effect (", "- translate ("];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].trim() !== "Output field contract:") {
+      normalized.push(lines[index]);
+      continue;
+    }
+    while (index + 1 < lines.length && (!lines[index + 1].trim() || lines[index + 1].startsWith("- "))) {
+      index += 1;
+      if (lines[index].trim() && !builtInFields.some((prefix) => lines[index].startsWith(prefix))) {
+        normalized.push(lines[index]);
+      }
+    }
+  }
+  return normalized
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function TemplateEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -149,67 +207,6 @@ export function TemplateEditorPage() {
     [characters, selectedCharacterNames],
   );
   const selectedEffectNames = useMemo(() => new Set(selectedEffects), [selectedEffects]);
-
-  const effectHintText = useMemo(() => {
-    if (!selectedEffects.length) return "";
-    const lines: string[] = ["可用音效："];
-    for (const ef of effects) {
-      if (selectedEffectNames.has(ef.name)) {
-        const tags = (ef.audio_tags || "").split("\n").filter(Boolean);
-        const kws: string[] = [];
-        for (const tag of tags) {
-          const kw = tag.replace(/^特效\s*\d+\s*[：:]\s*/, "").trim();
-          if (kw) kws.push(kw);
-        }
-        if (kws.length) {
-          lines.push(`${ef.name}有${kws.length}条特效音频：`);
-          kws.forEach((kw, i) => lines.push(`${i + 1}. ${kw}`));
-        }
-      }
-    }
-    if (lines.length <= 1) return "";
-    lines.push("");
-    lines.push("音效触发时机与模式：");
-    lines.push("- before:关键词 → 对话前播放一次");
-    lines.push("- after:关键词 → 对话后播放一次");
-    lines.push("- loop:关键词 → 开始循环播放（用于持续性音效如雨声、风声）");
-    lines.push("- stop:关键词 → 停止循环播放");
-    lines.push("- 关键词 → 默认对话前播放一次");
-    lines.push('循环示例：开始时 {"effect": "loop:雨声"}，结束时 {"effect": "stop:雨声"}');
-    return lines.join("\n");
-  }, [effects, selectedEffectNames, selectedEffects]);
-
-  // 选特效后自动写入/更新系统提示词（插在背景和可调用工具之间）
-  useEffect(() => {
-    setDraft((current) => {
-      let sys = current.system ?? "";
-      // 先移除旧的音效段落
-      const hintIdx = sys.indexOf("可用音效：");
-      if (hintIdx !== -1) {
-        let endIdx = sys.indexOf("\n\n", hintIdx + 12);
-        if (endIdx === -1) endIdx = sys.indexOf("\n", hintIdx + 12);
-        if (endIdx === -1) endIdx = sys.length;
-        // 向后找连续的空白行
-        while (endIdx < sys.length && sys[endIdx] === "\n") endIdx++;
-        sys = sys.slice(0, hintIdx) + sys.slice(endIdx);
-      }
-      if (!effectHintText) {
-        if (sys === (current.system ?? "")) return current;
-        return { ...current, system: sys };
-      }
-      // 插入到背景段落后、可调用工具前
-      const toolIdx = sys.indexOf("可调用工具");
-      if (toolIdx !== -1) {
-        // 在可调用工具前插入
-        sys = sys.slice(0, toolIdx) + "\n" + effectHintText + "\n\n" + sys.slice(toolIdx);
-      } else {
-        // 找不到可调用工具，追加到末尾
-        sys = sys.trimEnd() + "\n\n" + effectHintText;
-      }
-      if (sys === (current.system ?? "")) return current;
-      return { ...current, system: sys };
-    });
-  }, [effectHintText]);
   const failedQuery = [templatesQuery, sessionQuery, configQuery, charactersQuery, backgroundsQuery, effectsQuery].find(
     (query) => query.isError,
   );
@@ -218,7 +215,9 @@ export function TemplateEditorPage() {
   useEffect(() => {
     if (selected && !sessionDraftActive) {
       setSelectedId(selected.id);
-      setDraft(normalizeTemplateSummary(structuredClone(selected)));
+      const normalized = normalizeTemplateSummary(structuredClone(selected));
+      normalized.system = stripLegacyEffectHints(normalized.system ?? "");
+      setDraft(normalized);
       setMediaSelectionMode(selected.mediaSelectionMode ?? "indexed");
       setNameError("");
     }
@@ -276,7 +275,7 @@ export function TemplateEditorPage() {
         path: matchingTemplate?.path ?? "",
         mediaSelectionMode: restoredMediaSelectionMode,
         scenario: launchSession.scenario,
-        system: launchSession.system,
+        system: stripLegacyEffectHints(launchSession.system),
         updatedAt: matchingTemplate?.updatedAt ?? "",
       }),
     );
@@ -494,25 +493,7 @@ export function TemplateEditorPage() {
       const normalized = normalizeTemplateSummary(template);
       setIsCreating(true);
       setSessionDraftActive(true);
-      // 自动生成后重新注入音效信息
-      let sys = normalized.system ?? "";
-      const hintIdx = sys.indexOf("可用音效：");
-      if (hintIdx !== -1) {
-        let endIdx = sys.indexOf("\n\n", hintIdx + 12);
-        if (endIdx === -1) endIdx = sys.indexOf("\n", hintIdx + 12);
-        if (endIdx === -1) endIdx = sys.length;
-        while (endIdx < sys.length && sys[endIdx] === "\n") endIdx++;
-        sys = sys.slice(0, hintIdx) + sys.slice(endIdx);
-      }
-      if (effectHintText) {
-        const toolIdx = sys.indexOf("可调用工具");
-        if (toolIdx !== -1) {
-          sys = sys.slice(0, toolIdx) + "\n" + effectHintText + "\n\n" + sys.slice(toolIdx);
-        } else {
-          sys = sys.trimEnd() + "\n\n" + effectHintText;
-        }
-      }
-      normalized.system = sys;
+      normalized.system = stripLegacyEffectHints(normalized.system ?? "");
       setDraft(normalized);
       if (!options?.silent) {
         showToast({ kind: "success", message: template.generationMessage, title: t("template.toast.generated") });

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 
 
@@ -14,6 +14,7 @@ _KEYWORD_SEPARATOR_RE = re.compile(r"[,，]")
 class EffectAudioBinding:
     keyword: str
     audio_path: str
+    source_label: str = field(default="", compare=False)
 
 
 def parse_effect_audio_bindings(
@@ -47,6 +48,10 @@ def parse_effect_audio_bindings(
                 continue
             seen_keywords.add(key)
             bindings.append(
-                EffectAudioBinding(keyword=keyword, audio_path=audio_path)
+                EffectAudioBinding(
+                    keyword=keyword,
+                    audio_path=audio_path,
+                    source_label=keyword_block,
+                )
             )
     return tuple(bindings)

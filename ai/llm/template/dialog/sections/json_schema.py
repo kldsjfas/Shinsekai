@@ -14,7 +14,7 @@ def _json_string_content(value: str) -> str:
     return json.dumps(str(value), ensure_ascii=False)[1:-1]
 
 
-def _build_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
+def _base_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
     definitions = (
         (
             "character_name",
@@ -48,7 +48,7 @@ def _build_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
             {"target_voice_name": context.target_voice_name},
         ),
     )
-    fields = {
+    return {
         key: OutputFieldSpec(
             key,
             description=context.translate(rule, **arguments),
@@ -57,9 +57,12 @@ def _build_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
         for key, rule, required, enabled, arguments in definitions
         if enabled
     }
+
+
+def _build_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
     selection_field = "vibe" if context.uses_vibe else "sprite"
     return apply_field_patches(
-        fields,
+        _base_fields(context),
         context.output_contract_patches,
         protected_fields=frozenset({"character_name", "speech", selection_field}),
     )
@@ -90,8 +93,44 @@ def _build_field_contract_section(
     )
     return TextSection(
         "fields",
-        enabled=bool(fields),
+        enabled=context.uses_vibe and bool(fields),
         text="\nOutput field contract:\n",
+        children=lines,
+    )
+
+
+def build_custom_field_contract_section(
+    context: DialogTemplateContext,
+) -> TextSection[DialogTemplateContext]:
+    base_fields = _base_fields(context)
+    fields = {
+        key: field
+        for key, field in _build_fields(context).items()
+        if key not in base_fields or field != base_fields[key]
+    }
+    lines = tuple(
+        TextSection(
+            output_field.key,
+            text=(
+                f"- {output_field.key} ({output_field.type}, "
+                f"{'required' if output_field.required else 'optional'}): "
+                f"{output_field.description}"
+            ),
+            children=(
+                TextSection(
+                    "aliases",
+                    enabled=bool(output_field.aliases),
+                    text=f" Aliases: {', '.join(output_field.aliases)}.",
+                ),
+                TextSection("line_end", text="\n"),
+            ),
+        )
+        for output_field in fields.values()
+    )
+    return TextSection(
+        "custom_fields",
+        priority=25,
+        enabled=bool(fields),
         children=lines,
     )
 

@@ -6,13 +6,14 @@ from ...core import Section
 from ..context import DialogTemplateContext
 from .background import BackgroundSection
 from .character import CharacterSection
+from .effect import EffectCatalogSection
 from .json_schema import JsonSchemaSection
 from .requirements import RequirementsSection
 
 
 @dataclass(frozen=True)
 class DialogTemplateSection(Section[DialogTemplateContext]):
-    """Render the preamble and four directly owned domain sections."""
+    """Render the preamble and directly owned domain sections."""
 
     id: str = "dialog.system"
     children: tuple[Section[DialogTemplateContext], ...] = field(
@@ -20,6 +21,7 @@ class DialogTemplateSection(Section[DialogTemplateContext]):
             JsonSchemaSection(priority=10),
             CharacterSection(priority=20),
             BackgroundSection(priority=30),
+            EffectCatalogSection(priority=35),
             RequirementsSection(priority=40),
         )
     )

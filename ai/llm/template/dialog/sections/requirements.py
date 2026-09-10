@@ -9,6 +9,7 @@ from sdk.types import RequirementSpec
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
 from ..patches import apply_requirement_patches
+from .json_schema import build_custom_field_contract_section
 
 
 @dataclass(frozen=True)
@@ -200,6 +201,7 @@ class RequirementsSection(Section[DialogTemplateContext]):
         generated = (
             TextSection("tools", text=lambda ctx: ctx.tools_block, priority=10),
             rules,
+            build_custom_field_contract_section(context),
             TextSection(
                 "closing",
                 priority=30,

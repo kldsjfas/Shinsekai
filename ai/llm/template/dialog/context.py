@@ -18,6 +18,7 @@ class DialogTemplateContext(TemplateContext):
     tools_block: str = ""
     background: Any = None
     has_real_background: bool = False
+    effect_catalog: tuple[str, ...] = ()
     output_contract_patches: tuple[OutputContractPatch, ...] = ()
     use_effect: bool = False
     use_cg: bool = False

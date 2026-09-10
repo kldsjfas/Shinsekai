@@ -24,6 +24,77 @@ from .base import ThreadDagNode
 
 logger = get_logger(__name__)
 
+_IMAGE_ACTION_PATTERN = re.compile(
+    r"拿(?:了)?起|拿到|拿出|拾起|捡起|获得|发现|看到|找到|展示|出示|打开|翻开|使用|接过|递出|交给"
+)
+_NON_ACTUAL_ACTION_PREFIX = re.compile(
+    r"(?:没有|没|未|不曾|别|不要|尚未|想|打算|准备|计划|如果|假如|假设|回忆|想起|以前|曾经)[^，。！？\n]{0,8}$"
+)
+_NON_ACTUAL_RELATION = re.compile(r"想起|回忆|提到|说起|听说|如果|假如|假设")
+_ACTION_BOUNDARY = re.compile(r"[。！？；;\n]")
+
+
+def _has_actual_image_action(text: str, alias: str) -> bool:
+    alias_positions = [match.span() for match in re.finditer(re.escape(alias), text)]
+    for action in _IMAGE_ACTION_PATTERN.finditer(text):
+        if _NON_ACTUAL_ACTION_PREFIX.search(text[: action.start()]):
+            continue
+        for alias_start, alias_end in alias_positions:
+            if action.end() <= alias_start:
+                between = text[action.end() : alias_start]
+            elif alias_end <= action.start():
+                between = text[alias_end : action.start()]
+            else:
+                between = ""
+            if (
+                len(between) <= 24
+                and not _ACTION_BOUNDARY.search(between)
+                and not _NON_ACTUAL_RELATION.search(between)
+            ):
+                return True
+    return False
+
+
+def _image_effect_fallback(
+    user_text: str,
+    image_keyword_map: dict[str, str],
+) -> tuple[str, tuple[str, ...]] | None:
+    """Return one concrete image effect requested by the latest user action."""
+    text = str(user_text or "")
+    aliases = sorted(
+        (
+            str(keyword).strip()
+            for keyword in image_keyword_map
+            if len(str(keyword).strip()) >= 2
+            and "," not in str(keyword)
+            and "，" not in str(keyword)
+        ),
+        key=len,
+        reverse=True,
+    )
+    matched = next(
+        (alias for alias in aliases if _has_actual_image_action(text, alias)), ""
+    )
+    if not matched:
+        return None
+    image_path = image_keyword_map[matched]
+    confirmations = tuple(
+        alias for alias in aliases if image_keyword_map[alias] == image_path
+    )
+    return matched, confirmations
+
+
+def _apply_image_effect_fallback(
+    dialog: LLMDialogMessage,
+    fallback: tuple[str, tuple[str, ...]] | None,
+) -> tuple[LLMDialogMessage, tuple[str, tuple[str, ...]] | None]:
+    if fallback is None or str(dialog.effect or "").strip():
+        return dialog, fallback
+    effect, confirmations = fallback
+    if not any(alias in str(dialog.text or "") for alias in confirmations):
+        return dialog, fallback
+    return dialog.model_copy(update={"effect": effect}), None
+
 
 def _busy_preview_reasoning(raw: str, max_len: int = 200) -> str:
     """压成单行摘要供底栏显示（与 ui_message_handler 中 COT 预览一致）。"""
@@ -157,6 +228,10 @@ class LLMWorker(ThreadDagNode):
                 message_count = 0
                 delivered_dialogs: list[LLMDialogMessage] = []
                 raw_chunks: list = []
+                pending_image_effect = _image_effect_fallback(
+                    message.text,
+                    getattr(rt, "effect_image_keyword_map", {}) or {},
+                )
 
                 with tracker.track("LLM stream parse"):
                     for chunk in response_stream:
@@ -190,8 +265,21 @@ class LLMWorker(ThreadDagNode):
                                 message_count += 1
                                 appended_messages += 1
                                 delivered_dialogs.append(llm_dialog)
+                                queued_dialog, pending_image_effect = (
+                                    _apply_image_effect_fallback(
+                                        llm_dialog, pending_image_effect
+                                    )
+                                )
+                                if queued_dialog is not llm_dialog:
+                                    logger.info(
+                                        "Applied image effect fallback",
+                                        extra={
+                                            "event": "chat.effect.image_fallback_applied",
+                                            "effect": queued_dialog.effect,
+                                        },
+                                    )
                                 self.dialog_queue.put(
-                                    llm_dialog.model_copy(update={"turn_id": turn.id})
+                                    queued_dialog.model_copy(update={"turn_id": turn.id})
                                 )
                             logger.info(
                                 "Reconciled repaired dialogue with streamed messages",
@@ -215,8 +303,21 @@ class LLMWorker(ThreadDagNode):
                         for llm_dialog in parser.feed(chunk_message):
                             message_count += 1
                             delivered_dialogs.append(llm_dialog)
+                            queued_dialog, pending_image_effect = (
+                                _apply_image_effect_fallback(
+                                    llm_dialog, pending_image_effect
+                                )
+                            )
+                            if queued_dialog is not llm_dialog:
+                                logger.info(
+                                    "Applied image effect fallback",
+                                    extra={
+                                        "event": "chat.effect.image_fallback_applied",
+                                        "effect": queued_dialog.effect,
+                                    },
+                                )
                             self.dialog_queue.put(
-                                llm_dialog.model_copy(update={"turn_id": turn.id})
+                                queued_dialog.model_copy(update={"turn_id": turn.id})
                             )
 
                 # --- Interrupted: write committed context, discard the rest ---

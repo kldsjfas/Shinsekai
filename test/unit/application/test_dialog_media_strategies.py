@@ -272,6 +272,23 @@ def test_default_tts_generation_uses_fixed_voice_when_manager_is_unavailable(
     assert audio_paths == [voice_path.resolve().as_posix()]
 
 
+def test_default_tts_generation_skips_empty_effect_only_message():
+    manager = MagicMock()
+    request = TtsGenerationRequest(
+        runtime=SimpleNamespace(tts_manager=manager),
+        character=_character(),
+        character_name="Alice",
+        message=LLMDialogMessage(
+            name="Alice", text="", asset_id="1", effect="狼的印记"
+        ),
+        sprite=ResolvedSpriteAsset(asset_id="1"),
+    )
+
+    assert list(DefaultTtsGenerationStrategy().generate(request)) == [""]
+    manager.switch_model.assert_not_called()
+    manager.generate_tts.assert_not_called()
+
+
 def test_default_tts_generation_preserves_segment_output_order(tmp_path):
     audio_paths = [tmp_path / "first.wav", tmp_path / "second.wav"]
     for audio_path in audio_paths:

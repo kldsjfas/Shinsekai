@@ -322,6 +322,17 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         }),
         eventSeq: Math.max(state.eventSeq, event.seq),
       });
+    case "effect.image.show":
+      return withResolvedLayers({
+        ...state,
+        effectImage: {
+          expiresAt: event.ts + Math.max(0, event.durationMs),
+          label: event.label,
+          seq: event.seq,
+          url: event.url,
+        },
+        eventSeq: Math.max(state.eventSeq, event.seq),
+      });
     case "effect.loop.start":
       return withResolvedLayers({
         ...state,
@@ -406,6 +417,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         }),
         busyDurationSeconds: undefined,
         busyText: undefined,
+        effectImage: null,
         eventSeq: Math.max(state.eventSeq, event.seq),
         notificationText: event.reason,
         loopingEffects: [],

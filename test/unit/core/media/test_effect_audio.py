@@ -26,6 +26,9 @@ def test_parse_effect_audio_bindings_expands_multiple_keywords() -> None:
         "眩晕",
     ]
     assert {binding.audio_path for binding in bindings} == {"faint.wav"}
+    assert {binding.source_label for binding in bindings} == {
+        "晕掉, 晕过去，晕倒,眩晕,晕掉"
+    }
 
 
 def test_parse_effect_audio_bindings_ignores_unpaired_values() -> None:

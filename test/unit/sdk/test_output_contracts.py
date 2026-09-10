@@ -6,6 +6,7 @@ import pytest
 
 from core.messaging.dialog_tokens import BGM, SCENE
 from ai.llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
+from i18n import tr_in_bundle
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import (
     ChatOutputContract,
@@ -168,6 +169,55 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
 
     assert warning == ""
     assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\n")
+
+
+def test_template_generator_only_renders_effect_contract_for_a_valid_catalog(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda _name: character),
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **_kwargs: f"<{key}>\n",
+    )
+    generator = TemplateGenerator(output_contract_patches=[])
+
+    without_catalog, _ = generator.generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=True,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+    with_catalog, _ = generator.generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=True,
+        use_cg=False,
+        use_llm_translation=False,
+        effect_catalog=["rain", "letter"],
+    )
+
+    for marker in ("<json_line_effect>", "<effects_header>", "<r_effect>"):
+        assert marker not in without_catalog
+        assert marker in with_catalog
+    assert "- rain\n- letter" in with_catalog
+    assert "Output field contract" not in with_catalog
+    assert with_catalog.index("<sprites_header>") < with_catalog.index("<effects_header>")
+    assert with_catalog.index("<effects_header>") < with_catalog.index("<requirements_header>")
+
+
+def test_effect_requirement_explains_catalog_aliases_and_user_actions() -> None:
+    requirement = tr_in_bundle("template_gen.r_effect", "zh_CN")
+
+    assert "逗号或中文逗号分隔的词语是同一资源的可任选别名" in requirement
+    assert "用户最新输入中的实际动作" in requirement
+    assert "两个相邻 dialog 对象" in requirement
 
 
 def test_template_generator_skips_characters_missing_from_restored_selection(

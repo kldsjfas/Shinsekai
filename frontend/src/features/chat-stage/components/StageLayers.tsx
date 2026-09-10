@@ -2,6 +2,7 @@ import {
   createElement,
   useEffect,
   useRef,
+  useState,
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
@@ -13,7 +14,7 @@ import { Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type L
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
-import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
+import type { ChatOption, ChatSnapshot, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
@@ -61,6 +62,24 @@ export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
     <div aria-hidden={hidden} className={layerClassName("chat-stage__cg", hidden)} hidden={hidden}>
       {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}
     </div>
+  );
+}
+
+export function EffectImageLayer({ effect }: { effect?: ChatSnapshot["effectImage"] }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const remaining = (effect?.expiresAt ?? 0) - Date.now();
+    setVisible(Boolean(effect?.url) && remaining > 0);
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(() => setVisible(false), remaining);
+    return () => window.clearTimeout(timer);
+  }, [effect?.expiresAt, effect?.seq, effect?.url]);
+
+  if (!effect?.url || !visible) return null;
+  return (
+    <aside className="effect-image-layer" key={effect.seq} role="status">
+      <img alt={effect.label} onError={hideBrokenStageAsset} src={stageAssetUrl(effect.url)} />
+    </aside>
   );
 }
 

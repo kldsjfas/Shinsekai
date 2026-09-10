@@ -32,6 +32,7 @@ _MEDIA_EVENT_TYPES = {
     "cg.show",
     "effect.loop.start",
     "effect.play",
+    "effect.image.show",
     "sprite.show",
     "tts.play",
 }
