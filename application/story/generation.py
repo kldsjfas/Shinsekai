@@ -359,7 +359,15 @@ class StoryGenerationRepository:
                     handle.write(encoded)
                     handle.flush()
                     os.fsync(handle.fileno())
-                os.replace(temporary, path)
+                for attempt in range(6):
+                    try:
+                        os.replace(temporary, path)
+                        break
+                    except PermissionError:
+                        # Windows readers or scanners may briefly deny replacement.
+                        if attempt == 5:
+                            raise
+                        time.sleep(0.02 * (2 ** attempt))
             finally:
                 temporary.unlink(missing_ok=True)
 

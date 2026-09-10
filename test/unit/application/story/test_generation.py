@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
 import json
+import os
 import threading
 
 import pytest
@@ -33,6 +34,36 @@ from test.unit.core.story.story_fixtures import campus_mystery_source
 
 def enabled_flags() -> FeatureFlagConfigManager:
     return FeatureFlagConfigManager(overrides={FeatureFlag.STORY_SYSTEM: True})
+
+
+@pytest.mark.parametrize("failures", [2, 6])
+def test_checkpoint_replace_retries_locks_and_preserves_original_on_failure(
+    tmp_path, monkeypatch, failures
+):
+    repository = StoryGenerationRepository(enabled_flags(), tmp_path)
+    path = tmp_path / "checkpoint.json"
+    repository._write_json(path, {"version": 1})
+    replace = os.replace
+    calls = []
+
+    def locked_replace(source, target):
+        calls.append(target)
+        if len(calls) <= failures:
+            raise PermissionError("checkpoint is in use")
+        replace(source, target)
+
+    monkeypatch.setattr("application.story.generation.os.replace", locked_replace)
+    monkeypatch.setattr("application.story.generation.time.sleep", lambda _: None)
+    if failures == 6:
+        with pytest.raises(PermissionError):
+            repository._write_json(path, {"version": 2})
+        assert repository._read_json(path) == {"version": 1}
+        assert len(calls) == 6
+    else:
+        repository._write_json(path, {"version": 2})
+        assert repository._read_json(path) == {"version": 2}
+        assert len(calls) == 3
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 def stage_artifacts(*, two_endings: bool = False) -> dict[str, dict[str, Any]]:
