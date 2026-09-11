@@ -12,7 +12,7 @@ import itertools
 import math
 import re
 import time
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Dict, Protocol, runtime_checkable
 
 #: 事件协议版本，与前端 ``ChatStageEvent`` 的 ``v`` 字段一致。
 EVENT_PROTOCOL_VERSION = 1
@@ -238,7 +238,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "background.change":
         _clear_transient_notification_state(next_snapshot)
-        next_snapshot["backgroundPath"] = str(event.get("url") or "")
+        background_path = str(event.get("url") or "")
+        if background_path != (next_snapshot.get("backgroundPath") or ""):
+            next_snapshot["sprites"] = []
+        next_snapshot["backgroundPath"] = background_path
         return next_snapshot
 
     if event_type == "bgm.change":
@@ -267,11 +270,6 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         story = event.get("story")
         if isinstance(story, dict):
             next_snapshot["story"] = dict(story)
-            next_snapshot["options"] = [
-                dict(item)
-                for item in story.get("options", [])
-                if isinstance(item, dict)
-            ]
         return next_snapshot
 
     if event_type in {"story.node.entered", "story.node.unlocked", "story.cast.replace", "story.ending.reached"}:

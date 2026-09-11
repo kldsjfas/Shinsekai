@@ -114,7 +114,12 @@ class _StreamingSessionWiring:
             if self.runtime.input_queue is not None
             else None
         )
+        story_hooks = getattr(self.startup.llm_manager, "story_prompt_hooks", None)
+        if story_hooks is not None:
+            story_hooks.publish = lambda story: self.transport.emit({"type": "story.state.replace", "story": story})
         self.branch_manager = self._create_branch_manager()
+        if story_hooks is not None:
+            story_hooks.branch_id = lambda: self.branch_manager.active_branch_id
         self.runtime_asr = self._create_streaming_asr()
         self._bind_asr_presentation_hooks()
         self.transport.bind_command_dispatcher(self._create_command_dispatcher())

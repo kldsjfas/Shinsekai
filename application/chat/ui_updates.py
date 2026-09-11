@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
-from core.messaging.stat_payload import format_stats_html, parse_stat_payload
+from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
 from application.chat.history_state import serialize_chat_history_entries
 
@@ -278,6 +278,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             normalized_slot_count = 3
         self.max_sprite_slots = max(1, normalized_slot_count)
         self._sprite_lru: OrderedDict[str, int] = OrderedDict()
+        self._background_url = ""
         self._looping_effects: dict[str, str] = {}
         self.audio_playback_owner = "frontend"
 
@@ -362,8 +363,12 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sink.emit({"type": "numeric.update", "html": format_context_token_estimate(estimate)})
 
     def post_background(self, path: str) -> None:
+        url = self._media_url(path)
+        if url != self._background_url:
+            self._sprite_lru.clear()
+        self._background_url = url
         self.current_background_path = path or None
-        self._sink.emit({"type": "background.change", "url": self._media_url(path)})
+        self._sink.emit({"type": "background.change", "url": url})
 
     def switch_bgm(self, new_bgm_path: str) -> None:
         path = str(new_bgm_path or "").strip()

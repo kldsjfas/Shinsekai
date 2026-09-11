@@ -4,6 +4,7 @@ import re
 from queue import Queue
 
 from ai.vision.service import ChatVisionService
+from application.chat.background_prompt import current_background_context
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
 from core.messaging.stream_events import (
@@ -137,10 +138,12 @@ class LLMWorker(ThreadDagNode):
                             attachment.to_payload() for attachment in attachments
                         ],
                     }
-                    if attachments:
+                    background = current_background_context(rt)
+                    if attachments or background:
                         chat_kwargs["user_display_text"] = prepared_input.display_text
                     raw_response = self.llm_manager.chat(
-                        prepared_input.content, **chat_kwargs
+                        prepared_input.render_content(background=background),
+                        **chat_kwargs,
                     )
 
                 if turn.is_cancelled():

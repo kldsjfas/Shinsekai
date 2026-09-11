@@ -83,21 +83,19 @@ def test_simple_nodes_retain_generated_backgrounds() -> None:
     assert program.nodes_by_id["lobby"].background == "旧校舍大厅"
 
 
-def test_compiler_rejects_background_outside_story_catalog() -> None:
+def test_compiler_accepts_location_hints_outside_story_catalog() -> None:
     source = simple_story_source()
     source["metadata"]["backgrounds"] = ["旧校舍门口"]
     source["narrativeGraph"]["nodes"][0]["background"] = "不存在的地点"
 
-    with pytest.raises(StoryCompileError, match="metadata.backgrounds"):
-        StoryCompiler().compile(parse_story_project(source))
+    assert StoryCompiler().compile(parse_story_project(source)).nodes_by_id["opening"].background == "不存在的地点"
 
 
-def test_compiler_requires_background_when_catalog_is_present() -> None:
+def test_compiler_allows_nodes_without_background_when_catalog_is_present() -> None:
     source = simple_story_source()
     source["metadata"]["backgrounds"] = ["旧校舍门口"]
 
-    with pytest.raises(StoryCompileError, match="require a background"):
-        StoryCompiler().compile(parse_story_project(source))
+    assert StoryCompiler().compile(parse_story_project(source)).nodes_by_id["opening"].background is None
 
 
 def test_limited_node_uses_default_target_at_round_limit() -> None:

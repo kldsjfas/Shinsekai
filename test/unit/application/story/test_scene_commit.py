@@ -1,4 +1,3 @@
-import json
 
 import pytest
 
@@ -8,10 +7,8 @@ from application.story import (
     JsonStorySessionRepository,
     StorySession,
 )
-from application.story.history_projection import project_story_history
 from application.story.scene import SceneOrchestrator
 from application.story.session import SceneTurnCommand
-from core.chat_history.storage import chat_history_active_path, load_branch_state
 from test.unit.application.story.test_chat_integration import _state
 from test.unit.application.story.test_scene import _Model
 from test.unit.application.story.test_simple_scene_nodes import _dialogue, _simple_scene
@@ -149,41 +146,15 @@ def test_every_persisted_advance_includes_scene_receipt_and_history(
     assert session.global_progress.unlocked_ending_ids == {"ending"}
 
 
-def test_projection_failure_retries_without_regeneration_or_duplicate_history(
-    tmp_path, monkeypatch
-):
+def test_normal_chat_does_not_project_or_regenerate_scene_history(tmp_path):
     session, model, scene = _persisted_scene(tmp_path, _dialogue("走进大厅。", "lobby"))
     state = _state(enabled=True)
     state.story_session, state.story_scene_service = session, scene
     state.chat_session["historyPath"] = session.owner_history_path
+    original = [{"id": "normal", "role": "assistant", "text": "模板生成的对话"}]
+    state.chat_stream.snapshot["historyEntries"] = original
     command = {"type": "send-message", "cmdId": "turn", "payload": "进去"}
-
-    def fail_projection(_session):
-        raise OSError("projection interrupted")
-
-    monkeypatch.setattr(
-        "application.chat.runtime_process.project_story_history", fail_projection
-    )
-    with pytest.raises(OSError, match="projection interrupted"):
-        _handle_chat_command(state, command)
-
-    recovered, retry_model, retry_scene = _recover(session, scene)
-    state.story_session, state.story_scene_service = recovered, retry_scene
-    # Snapshot recovery uses committed history even while the stream is stale.
-    assert len(_chat_snapshot(state)["historyEntries"]) == 2
-    monkeypatch.setattr(
-        "application.chat.runtime_process.project_story_history", project_story_history
-    )
-    for _ in range(2):
-        snapshot = _handle_chat_command(state, command)
-    assert len(snapshot["historyEntries"]) == 2
-    assert len(model.requests) == 1 and retry_model.requests == []
-    messages = json.loads(
-        chat_history_active_path(session.owner_history_path).read_text(encoding="utf-8")
-    )
-    assert messages == [
-        {"role": "user", "content": "进去"},
-        {"role": "assistant", "name": "ling", "content": "走进大厅。"},
-    ]
-    tree = load_branch_state(session.owner_history_path)
-    assert tree["branches"]["main"]["messages"] == messages
+    _handle_chat_command(state, command)
+    assert model.requests == []
+    assert state.chat_stream.command[1] == command
+    assert _chat_snapshot(state)["historyEntries"] == original

@@ -824,6 +824,18 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     story: {
+      list: () => requestJson(apiBase, "/api/story/library"),
+      prepareLaunch: (storyPath, historyPath = "") =>
+        requestJson(apiBase, "/api/story/launch-payload", {
+          body: JSON.stringify({ storyPath, historyPath }),
+          method: "POST",
+        }),
+      getPreview: (id) => requestJson(apiBase, `/api/story/generation/${encodePath(id)}/preview`),
+      startSession: (storyPath) =>
+        requestJson(apiBase, "/api/story/start", {
+          body: JSON.stringify({ storyPath }),
+          method: "POST",
+        }),
       cancelGeneration: (id) =>
         requestJson<StoryGenerationTask>(apiBase, `/api/story/generation/${encodePath(id)}/cancel`, {
           body: JSON.stringify({}),
