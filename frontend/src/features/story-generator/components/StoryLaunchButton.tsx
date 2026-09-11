@@ -1,3 +1,4 @@
+import { useI18n } from "../../../shared/i18n";
 import { Button } from "../../../shared/ui";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -25,7 +26,7 @@ function pendingAttachment() {
 export function StoryLaunchButton({
   storyPath,
   historyPath = "",
-  label = "运行剧本",
+  label,
   disabled = false,
 }: {
   storyPath: string;
@@ -33,6 +34,7 @@ export function StoryLaunchButton({
   label?: string;
   disabled?: boolean;
 }) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
   const init = useChatInitialization();
@@ -47,11 +49,11 @@ export function StoryLaunchButton({
         if (status.state !== "idle") {
           const pending = pendingAttachment();
           if (!pending || pending.storyPath !== storyPath || pending.historyPath !== historyPath) {
-            throw new Error("请先结束当前聊天，再运行剧本。");
+            throw new Error(t("story.launch.busy"));
           }
           const current = await getChatSnapshot();
           if (status.state === "closing" || !pending.sessionId || current.sessionId !== pending.sessionId) {
-            throw new Error("当前聊天已发生变化，请先结束当前聊天再重试。");
+            throw new Error(t("story.launch.changed"));
           }
           launched = current;
         } else {
@@ -80,7 +82,7 @@ export function StoryLaunchButton({
         disabled={disabled || !storyPath || init.initializationPending}
         onClick={() => void launch()}
       >
-        {init.initializationPending ? "正在启动…" : label}
+        {init.initializationPending ? t("story.launch.starting") : (label ?? t("story.launch.action"))}
       </Button>
       {error && (
         <p className="story-generator-error" role="alert">

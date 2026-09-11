@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StoryLaunchButton } from "../../../features/story-generator/components/StoryLaunchButton";
+import { I18nProvider, type FrontendLanguage } from "../../../shared/i18n";
 
 const { launchChat, getChatRuntimeStatus, getChatSnapshot, startStorySession, showChatSurface, prepareStoryLaunch } =
   vi.hoisted(() => ({
@@ -27,17 +28,26 @@ vi.mock("../../../entities/story/repository", () => ({
 vi.mock("../../../shared/desktop/chatWindow", () => ({ showChatSurface }));
 vi.mock("../../../features/chat-startup/ChatInitializationDialog", () => ({ ChatInitializationDialog: () => null }));
 
-function renderButton(historyPath = "") {
+function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN") {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter>
-        <StoryLaunchButton storyPath="story/draft.json" historyPath={historyPath} disabled={false} />
-      </MemoryRouter>
+      <I18nProvider language={language}>
+        <MemoryRouter>
+          <StoryLaunchButton storyPath="story/draft.json" historyPath={historyPath} disabled={false} />
+        </MemoryRouter>
+      </I18nProvider>
     </QueryClientProvider>,
   );
 }
 
 describe("story launch", () => {
+  it("localizes the default launch action and active-chat error", async () => {
+    getChatRuntimeStatus.mockResolvedValue({ state: "running" });
+    renderButton("", "en");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("End the current chat before playing a story.");
+    expect(launchChat).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
