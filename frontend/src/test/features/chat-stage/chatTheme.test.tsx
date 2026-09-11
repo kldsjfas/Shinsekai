@@ -324,6 +324,36 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
   });
 
+  it("maps optional artwork controls and spacing without changing themes that omit them", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "artwork-controls",
+        name: { en: "Artwork Controls" },
+        tokens: {
+          dialog: { paddingInlinePx: 92 },
+          input: { bottomInsetPx: 0, borderRadius: "0px", layout: "pill", microphoneImage: "mic.png" },
+          name: { background: "linear-gradient(90deg, transparent, #111, transparent)" },
+          options: { active: { boxShadow: "none" }, hover: { boxShadow: "none" } },
+          send: { backgroundImage: "send.png" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-padding-inline"]).toBe("92px");
+    expect(resolved.style["--stage-safe-bottom"]).toBe("0px");
+    expect(resolved.style["--chat-input-border-radius"]).toBe("0px");
+    expect(resolved.style["--chat-input-microphone-image"]).toBe('url("asset://mic.png")');
+    expect(resolved.style["--chat-input-microphone-icon-opacity"]).toBe("0");
+    expect(resolved.style["--chat-option-hover-base-shadow"]).toBe("none");
+    expect(resolved.style["--chat-option-focus-outline"]).toBe("none");
+    expect(resolved.style["--chat-send-button-width"]).toBe("112px");
+    expect(resolved.style["--chat-send-button-height"]).toBe("46px");
+    expect(resolved.style["--chat-send-icon-opacity"]).toBe("0");
+    expect(resolved.style["--chat-name-sheen"]).toBe("none");
+  });
+
   it("falls back to an asymmetric frameSlice for a nine-slice background", () => {
     const resolved = resolveChatTheme(
       {
