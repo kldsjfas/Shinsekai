@@ -8,8 +8,8 @@ from typing import Any
 from config.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
-from ai.llm.template.integrations.effects import translate_effect_prompt
-from ai.llm.template.prompts.effects import EffectCatalogEntry
+from ai.llm.template.integrations.localization import translate_template
+from ai.llm.template.dialog.context import EffectCatalogEntry
 from application.chat.build_effect_context import SelectedEffectContext
 from ai.llm.template.prompts import (
     RuntimePromptContext,
@@ -134,7 +134,7 @@ def _compose_runtime_template(
         user_scenario=_effective_user_scenario(user_scenario),
         json_reminder=json_format_reminder(),
         effects=tuple(effects),
-        translate_effect=translate_effect_prompt,
+        translate=translate_template,
     )
     return build_runtime_prompt_section().render(context) + "\n"
 

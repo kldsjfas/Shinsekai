@@ -5,7 +5,22 @@ from typing import Any, Callable
 
 from sdk.types import OutputContractPatch
 
-from ..core import TemplateContext
+from ai.llm.template.core.context import TemplateContext
+
+
+@dataclass(frozen=True)
+class EffectCatalogEntry:
+    label: str
+    has_audio: bool = False
+    has_image: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class EffectCatalogContext(TemplateContext):
+    """Catalog inputs supplied at launch, independently of template generation."""
+
+    effects: tuple[EffectCatalogEntry, ...] = ()
+    translate: Callable[[str], str] | None = None
 
 
 @dataclass(frozen=True)

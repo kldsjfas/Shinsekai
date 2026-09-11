@@ -480,7 +480,7 @@ def test_runtime_catalog_projects_types_and_does_not_modify_authored_template(mo
     from core.media.effect_image import ImageEffectAsset
 
     monkeypatch.setattr("application.chat.templates.json_format_reminder", lambda: "REMINDER")
-    monkeypatch.setattr("application.chat.templates.translate_effect_prompt", lambda key: key)
+    monkeypatch.setattr("application.chat.templates.translate_template", lambda key: key)
     selected = SelectedEffectContext(
         selected_names=("Items",), labels=("rain", "letter", "key"),
         keyword_map={"rain": "rain.wav"},

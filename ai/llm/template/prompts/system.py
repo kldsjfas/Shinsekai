@@ -3,11 +3,12 @@
 from dataclasses import dataclass
 
 from ai.llm.template.core.section import Section, TextSection
-from ai.llm.template.prompts.effects import EffectCatalogSection, EffectPromptContext
+from ai.llm.template.dialog.context import EffectCatalogContext
+from ai.llm.template.dialog.sections.effects import EffectCatalogSection
 
 
 @dataclass(frozen=True)
-class RuntimePromptContext(EffectPromptContext):
+class RuntimePromptContext(EffectCatalogContext):
     system_template: str
     user_scenario: str
     json_reminder: str

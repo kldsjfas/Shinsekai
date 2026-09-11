@@ -2,7 +2,8 @@ from dataclasses import replace
 
 import pytest
 
-from ai.llm.template.prompts.effects import EffectCatalogEntry, EffectCatalogSection
+from ai.llm.template.dialog.context import EffectCatalogEntry
+from ai.llm.template.dialog.sections.effects import EffectCatalogSection
 from ai.llm.template.prompts.system import (
     RuntimePromptContext,
     build_runtime_prompt_section,
@@ -24,7 +25,7 @@ def test_catalog_is_one_runtime_section_and_preserves_authored_text(language):
         system_template=AUTHORED_SYSTEM,
         user_scenario="Scenario",
         json_reminder="Reminder",
-        translate_effect=translate,
+        translate=translate,
     )
     tree = build_runtime_prompt_section()
     assert tree.render(context) == AUTHORED_SYSTEM + "\nScenario\nReminder"
@@ -64,6 +65,6 @@ def test_empty_catalog_does_not_resolve_translations():
         system_template=AUTHORED_SYSTEM,
         user_scenario="",
         json_reminder="",
-        translate_effect=unreachable,
+        translate=unreachable,
     )
     assert build_runtime_prompt_section().render(context) == AUTHORED_SYSTEM
