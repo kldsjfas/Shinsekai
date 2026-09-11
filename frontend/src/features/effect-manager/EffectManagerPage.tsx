@@ -390,7 +390,7 @@ export function EffectManagerPage() {
 
   const updateAudioRowTag = useCallback((index: number, value: string) => {
     setDraft((current) => {
-      const tags = tagContents(current.audio_tags, current.audio_list.length);
+      const tags = tagContents(current.audio_tags, current.audio_list.length, true);
       tags[index] = value;
       return { ...current, audio_tags: numberedTags("特效", tags) };
     });
@@ -398,7 +398,7 @@ export function EffectManagerPage() {
 
   const updateImageRowTag = useCallback((index: number, value: string) => {
     setDraft((current) => {
-      const tags = tagContents(current.image_tags, current.image_list.length);
+      const tags = tagContents(current.image_tags, current.image_list.length, true);
       tags[index] = value;
       return { ...current, image_tags: numberedTags("图片", tags) };
     });
@@ -520,11 +520,11 @@ export function EffectManagerPage() {
   }, [currentEffectName, draft, saveMutation, t]);
 
   const audioRowTags = useMemo(
-    () => tagContents(draft.audio_tags, draft.audio_list.length),
+    () => tagContents(draft.audio_tags, draft.audio_list.length, true),
     [draft.audio_list.length, draft.audio_tags],
   );
   const imageRowTags = useMemo(
-    () => tagContents(draft.image_tags, draft.image_list.length),
+    () => tagContents(draft.image_tags, draft.image_list.length, true),
     [draft.image_list.length, draft.image_tags],
   );
 

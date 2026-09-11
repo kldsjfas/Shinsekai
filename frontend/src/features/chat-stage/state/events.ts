@@ -42,7 +42,7 @@ function appendAudioCommand(state: ChatStageState, command: ChatAudioCommand) {
   return [...state.audioCommands, command].slice(-32);
 }
 
-export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): ChatStageState {
+export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, receivedAt = 0): ChatStageState {
   if (event.type === "transport.state") {
     return withResolvedLayers({
       ...state,
@@ -55,10 +55,14 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
   }
   switch (event.type) {
     case "snapshot":
-      return hydrateFromSnapshot(state, {
-        ...event.snapshot,
-        eventSeq: Math.max(snapshotEventSeq(event.snapshot), event.seq),
-      });
+      return hydrateFromSnapshot(
+        state,
+        {
+          ...event.snapshot,
+          eventSeq: Math.max(snapshotEventSeq(event.snapshot), event.seq),
+        },
+        receivedAt,
+      );
     case "chat.init.progress":
     case "chat.init.completed":
     case "chat.init.failed":
@@ -326,7 +330,8 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
       return withResolvedLayers({
         ...state,
         effectImage: {
-          expiresAt: event.ts + Math.max(0, event.durationMs),
+          deadline: receivedAt + Math.max(0, event.durationMs),
+          durationMs: Math.max(0, event.durationMs),
           label: event.label,
           seq: event.seq,
           url: event.url,

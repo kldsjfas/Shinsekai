@@ -2,7 +2,9 @@ from dataclasses import replace
 
 import pytest
 
-from ai.llm.template.dialog.context import EffectCatalogEntry
+from ai.llm.template.dialog.context import (
+    DialogTemplateContext, EffectCatalogContext, EffectCatalogEntry,
+)
 from ai.llm.template.dialog.sections.effects import EffectCatalogSection
 from ai.llm.template.prompts.system import (
     RuntimePromptContext,
@@ -25,16 +27,18 @@ def test_catalog_is_one_runtime_section_and_preserves_authored_text(language):
         system_template=AUTHORED_SYSTEM,
         user_scenario="Scenario",
         json_reminder="Reminder",
-        translate=translate,
     )
     tree = build_runtime_prompt_section()
     assert tree.render(context) == AUTHORED_SYSTEM + "\nScenario\nReminder"
     selected = replace(
         context,
-        effects=(
-            EffectCatalogEntry("letter, sealed letter", has_image=True),
-            EffectCatalogEntry("{rain}", has_audio=True),
-            EffectCatalogEntry("key", has_image=True, has_audio=True),
+        effect_catalog=EffectCatalogContext(
+            effects=(
+                EffectCatalogEntry("letter, sealed letter", "image", ("before", "after")),
+                EffectCatalogEntry("{rain}", "audio", ("before", "after", "loop", "stop")),
+                EffectCatalogEntry("key", "image_audio", ("before", "after")),
+            ),
+            translate=translate,
         ),
     )
     result = tree.render(selected)
@@ -65,6 +69,22 @@ def test_empty_catalog_does_not_resolve_translations():
         system_template=AUTHORED_SYSTEM,
         user_scenario="",
         json_reminder="",
-        translate=unreachable,
+        effect_catalog=EffectCatalogContext(translate=unreachable),
     )
     assert build_runtime_prompt_section().render(context) == AUTHORED_SYSTEM
+
+
+def test_catalog_composes_with_both_dialog_and_runtime_contexts():
+    catalog = EffectCatalogContext(
+        effects=(EffectCatalogEntry("key", "image", ("before", "after")),),
+        translate=lambda key: key,
+    )
+    dialog = DialogTemplateContext(
+        characters=(), translate=lambda key: key, target_voice_name="en", json_reminder=""
+    )
+    runtime = RuntimePromptContext("system", "scenario", "reminder")
+    section = EffectCatalogSection()
+    assert section.render(dialog) == section.render(runtime) == ""
+    assert section.render(replace(dialog, effect_catalog=catalog)) == section.render(
+        replace(runtime, effect_catalog=catalog)
+    )

@@ -17,7 +17,9 @@
   left: var(--stage-safe-x);
   z-index: 12;
   pointer-events: none;
-  animation: effect-image-show 8.8s ease both;
+  animation-name: effect-image-show;
+  animation-timing-function: ease;
+  animation-fill-mode: both;
 }
 
 .chat-stage[data-stat-visible="true"] .effect-image-layer {

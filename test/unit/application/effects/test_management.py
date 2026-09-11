@@ -314,3 +314,22 @@ def test_export_rejects_missing_audio_instead_of_writing_dangling_path(
         _execute(use_case, EffectOperation.EXPORT, name="Impact")
 
     assert not (tmp_path / "output" / "Impact.ef").exists()
+
+
+@pytest.mark.parametrize("media", ["audio", "image"])
+def test_upload_keeps_existing_blank_rows_and_handles_missing_trailing_newline(tmp_path, media):
+    source = tmp_path / ("new.png" if media == "image" else "new.wav")
+    source.write_bytes(b"asset")
+    effect = _effect("Rows", **{
+        f"{media}_list": ["a.png", "b.png", "c.png"],
+        f"{media}_tags": "Row 1: first\n\nRow 3: third：detail",
+    })
+    use_case, _ = _use_case(tmp_path, (effect,))
+    operation = EffectOperation.UPLOAD_IMAGES if media == "image" else EffectOperation.UPLOAD_AUDIO
+    uploaded = _execute(use_case, operation, name="Rows", paths=[str(source)])
+    lines = getattr(uploaded, f"{media}_tags").splitlines()
+    assert len(lines) == 4
+    assert lines[0].endswith("：first")
+    assert lines[1].endswith("：")
+    assert lines[2].endswith("：third：detail")
+    assert lines[3].endswith("：")

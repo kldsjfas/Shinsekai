@@ -740,16 +740,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (!effect || index < 0 || index >= effect.audio_list.length) {
           throw new Error("特效音频不存在。");
         }
+        const tags = tagContents(effect.audio_tags, effect.audio_list.length, true);
         effect.audio_list = effect.audio_list.filter((_, itemIndex) => itemIndex !== index);
-        effect.audio_tags = effect.audio_tags
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .filter((_, itemIndex) => itemIndex !== index)
-          .map((line, itemIndex) => `特效 ${itemIndex + 1}：${line.split(/\：|:/).slice(1).join("：")}`)
-          .join("\n");
-        if (effect.audio_tags) {
-          effect.audio_tags += "\n";
-        }
+        effect.audio_tags = numberedTags(
+          "特效",
+          tags.filter((_, itemIndex) => itemIndex !== index),
+        );
         return delay(effect);
       },
       async deleteImage(name, index) {
@@ -757,21 +753,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (!effect || index < 0 || index >= effect.image_list.length) {
           throw new Error("特效图片不存在。");
         }
+        const tags = tagContents(effect.image_tags, effect.image_list.length, true);
         effect.image_list = effect.image_list.filter((_, itemIndex) => itemIndex !== index);
         effect.image_audio_list = effect.image_audio_list.filter((_, itemIndex) => itemIndex !== index);
-        effect.image_tags = effect.image_tags
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .filter((_, itemIndex) => itemIndex !== index)
-          .map(
-            (line, itemIndex) =>
-              `图片 ${itemIndex + 1}：${line
-                .split(/\uff1a|:/)
-                .slice(1)
-                .join("：")}`,
-          )
-          .join("\n");
-        if (effect.image_tags) effect.image_tags += "\n";
+        effect.image_tags = numberedTags(
+          "图片",
+          tags.filter((_, itemIndex) => itemIndex !== index),
+        );
         return delay(effect);
       },
       export: (name) => delay(`./data/export/${name}.ef`),
@@ -828,16 +816,18 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (!effect) {
           throw new Error("特效方案不存在。");
         }
+        const tags = tagContents(input.audioTags || effect.audio_tags, effect.audio_list.length, true);
         effect.audio_list = [...effect.audio_list, ...input.paths];
-        effect.audio_tags = `${input.audioTags || ""}${input.paths.map((_, index) => `特效 ${effect.audio_list.length - input.paths.length + index + 1}：`).join("\n")}\n`;
+        effect.audio_tags = numberedTags("特效", [...tags, ...input.paths.map(() => "")]);
         return delay(effect);
       },
       async uploadImages(input) {
         const effect = config.effect_list.find((item) => item.name === input.name);
         if (!effect) throw new Error("特效方案不存在。");
+        const tags = tagContents(input.imageTags || effect.image_tags, effect.image_list.length, true);
         effect.image_list = [...effect.image_list, ...input.paths];
         effect.image_audio_list = [...effect.image_audio_list, ...input.paths.map(() => "")];
-        effect.image_tags = `${input.imageTags || ""}${input.paths.map((_, index) => `图片 ${effect.image_list.length - input.paths.length + index + 1}：`).join("\n")}\n`;
+        effect.image_tags = numberedTags("图片", [...tags, ...input.paths.map(() => "")]);
         return delay(effect);
       },
       async uploadImageAudio(input) {

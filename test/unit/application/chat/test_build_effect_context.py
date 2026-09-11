@@ -45,7 +45,7 @@ def test_selected_effect_context_builds_labels_and_runtime_maps():
     )
 
     assert context.selected_names == ("Ambient",)
-    assert context.labels == ("door, open door", "cloth，rustle")
+    assert context.labels == ("door", "open door", "cloth", "rustle")
     assert context.keyword_map == {
         "door": "door.wav",
         "open door": "door.wav",
@@ -107,7 +107,7 @@ def test_selected_effect_context_includes_image_and_bound_audio():
         ["Items"],
     )
 
-    assert context.labels == ("letter, sealed letter",)
+    assert context.labels == ("letter", "sealed letter")
     assert context.image_keyword_map == {
         label: ImageEffectAsset("letter.png", "paper.wav")
         for label in ("letter", "sealed letter", "letter, sealed letter")
@@ -134,3 +134,16 @@ def test_image_alias_collision_keeps_audio_aligned_with_its_image_row():
     assert context.image_keyword_map["letter"] == ImageEffectAsset("letter.png", "letter.wav")
     assert context.image_keyword_map["paper"] == ImageEffectAsset("key.png", "")
     assert context.image_keyword_map["key, paper"] == ImageEffectAsset("key.png", "")
+
+
+def test_catalog_capabilities_follow_each_final_alias_binding():
+    context = build_effect_context(_manager(_effect(
+        "Mixed", "Effect 1: rain, wind\n", ["weather.wav"],
+        image_tags="Image 1: wind\n", image_list=["wind.png"],
+    )), ["Mixed"])
+    catalog = {item.label: item for item in context.catalog}
+    assert tuple(catalog) == ("rain", "wind")
+    assert catalog["rain"].kind == "audio"
+    assert catalog["rain"].modes == ("before", "after", "loop", "stop")
+    assert catalog["wind"].kind == "image_audio"
+    assert catalog["wind"].modes == ("before", "after")

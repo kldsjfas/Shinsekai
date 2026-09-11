@@ -86,11 +86,14 @@ and `(template, warning)` return value are unchanged.
 
 `dialog/sections/effects.py` owns `EffectCatalogSection`, which renders the
 selected runtime catalog as one child of `prompts.build_runtime_prompt_section()`,
-between the authored
-system text and scenario. The application prepares labels and resource types;
+between the authored system text and scenario. The application prepares labels
+and resource types;
 `integrations/localization.py` supplies the shared translation entry point used
-by both template generation and runtime catalogs. Catalog entries identify audio,
-images, or images with bound audio, and their supported timing modes. Empty
+by both template generation and runtime catalogs. The application resolves each
+alias against the final playback bindings before projecting resource types and
+supported modes into catalog entries. Rendering
+does not infer resource capabilities. Dialog and runtime contexts contain an
+optional `EffectCatalogContext`; neither inherits from this feature context. Empty
 selections add nothing. Generated templates contain the output contract; the
 runtime catalog is neither saved into authored templates nor composed twice.
 

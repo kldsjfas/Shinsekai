@@ -9,7 +9,7 @@ from config.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
 from ai.llm.template.integrations.localization import translate_template
-from ai.llm.template.dialog.context import EffectCatalogEntry
+from ai.llm.template.dialog.context import EffectCatalogContext, EffectCatalogEntry
 from application.chat.build_effect_context import SelectedEffectContext
 from ai.llm.template.prompts import (
     RuntimePromptContext,
@@ -114,27 +114,20 @@ def _compose_runtime_template(
     user_scenario: str,
     effect_context: SelectedEffectContext | None = None,
 ) -> str:
-    effects: list[EffectCatalogEntry] = []
+    catalog = None
     if effect_context is not None:
-        for label in effect_context.labels:
-            key = label.casefold()
-            image = effect_context.image_keyword_map.get(key)
-            effects.append(
-                EffectCatalogEntry(
-                    label=label,
-                    has_image=image is not None,
-                    has_audio=bool(
-                        (image and image.audio_path)
-                        or effect_context.keyword_map.get(key)
-                    ),
-                )
-            )
+        catalog = EffectCatalogContext(
+            effects=tuple(
+                EffectCatalogEntry(item.label, item.kind, item.modes)
+                for item in effect_context.catalog
+            ),
+            translate=translate_template,
+        )
     context = RuntimePromptContext(
         system_template=(system_template or "").rstrip(),
         user_scenario=_effective_user_scenario(user_scenario),
         json_reminder=json_format_reminder(),
-        effects=tuple(effects),
-        translate=translate_template,
+        effect_catalog=catalog,
     )
     return build_runtime_prompt_section().render(context) + "\n"
 

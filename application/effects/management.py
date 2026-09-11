@@ -1,4 +1,4 @@
-"""Application use case for effect configuration and managed audio resources."""
+"""Application use case for effect configuration and managed media resources."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ import zipfile
 import yaml
 
 from config.schema import Effect
+from core.media.asset_tags import numbered_tags, tag_content as _tag_text, tag_contents
 from sdk.path_utils import (
     safe_child_path,
     safe_existing_file_path,
@@ -139,15 +140,15 @@ class EffectUseCase:
             old_dir = self._effect_dir(original.name)
             new_dir = self._effect_dir(updated.name)
             if old_dir.is_dir() and old_dir != new_dir:
-                body["audio_list"] = self._renamed_audio_paths(
+                body["audio_list"] = self._renamed_asset_paths(
                     body.get("audio_list"), old_dir, new_dir
                 )
                 if "image_list" in body:
-                    body["image_list"] = self._renamed_audio_paths(
+                    body["image_list"] = self._renamed_asset_paths(
                         body.get("image_list"), old_dir, new_dir
                     )
                 if "image_audio_list" in body:
-                    body["image_audio_list"] = self._renamed_audio_paths(
+                    body["image_audio_list"] = self._renamed_asset_paths(
                         body.get("image_audio_list"), old_dir, new_dir
                     )
                 updated = Effect.model_validate(body)
@@ -192,14 +193,18 @@ class EffectUseCase:
         effect_dir = self._effect_dir(name)
         effect_dir.mkdir(parents=True, exist_ok=True)
         audio_list = list(effect.audio_list or [])
-        tags = str(payload.get("audioTags") or effect.audio_tags or "")
+        tags = tag_contents(
+            str(payload.get("audioTags") or effect.audio_tags or ""),
+            len(audio_list),
+            preserve_blank_lines=True,
+        )
 
         for raw_path in paths:
             try:
                 source = safe_existing_file_path(
                     str(raw_path),
                     roots=self.local_file_access_roots,
-                    field="effect audio path",
+                    field="effect asset path",
                 )
             except (OSError, ValueError, FileNotFoundError):
                 continue
@@ -208,10 +213,10 @@ class EffectUseCase:
             destination_text = destination.as_posix()
             if destination_text not in audio_list:
                 audio_list.append(destination_text)
-                tags += f"特效 {len(audio_list)}：\n"
+                tags.append("")
 
         effect.audio_list = audio_list
-        effect.audio_tags = tags
+        effect.audio_tags = numbered_tags("特效", tags)
         self.config_manager.save_effect_config()
         return self._effect_after_reload(name)
 
@@ -278,7 +283,11 @@ class EffectUseCase:
         image_list = list(effect.image_list or [])
         image_audio_list = list(effect.image_audio_list or [])
         image_audio_list.extend("" for _ in range(len(image_list) - len(image_audio_list)))
-        tags = str(payload.get("imageTags") or effect.image_tags or "")
+        tags = tag_contents(
+            str(payload.get("imageTags") or effect.image_tags or ""),
+            len(image_list),
+            preserve_blank_lines=True,
+        )
 
         for raw_path in paths:
             try:
@@ -295,11 +304,11 @@ class EffectUseCase:
             shutil.copy2(source, destination)
             image_list.append(destination.as_posix())
             image_audio_list.append("")
-            tags += f"图片 {len(image_list)}：\n"
+            tags.append("")
 
         effect.image_list = image_list
         effect.image_audio_list = image_audio_list
-        effect.image_tags = tags
+        effect.image_tags = numbered_tags("图片", tags)
         self.config_manager.save_effect_config()
         return self._effect_after_reload(name)
 
@@ -452,7 +461,7 @@ class EffectUseCase:
         packaged_names: set[str] = set()
         exported_audio_list: list[str] = []
         for raw_audio_path in effect.audio_list or ():
-            audio_file = self._export_audio_file(effect.name, str(raw_audio_path))
+            audio_file = self._export_asset_file(effect.name, str(raw_audio_path))
             package_name = self._available_package_filename(
                 audio_file.name,
                 packaged_names,
@@ -530,7 +539,7 @@ class EffectUseCase:
             if not raw_path and allow_empty:
                 exported.append("")
                 continue
-            asset_file = self._export_audio_file(effect_name, str(raw_path))
+            asset_file = self._export_asset_file(effect_name, str(raw_path))
             package_name = self._available_package_filename(asset_file.name, used_names)
             used_names.add(package_name.casefold())
             package_path = f"{directory}/{package_name}"
@@ -538,14 +547,14 @@ class EffectUseCase:
             exported.append(package_path)
         return packaged, exported
 
-    def _export_audio_file(self, effect_name: str, raw_path: str) -> Path:
+    def _export_asset_file(self, effect_name: str, raw_path: str) -> Path:
         managed_file = self._managed_file(effect_name, raw_path)
         if managed_file is not None:
             return managed_file
         return safe_existing_file_path(
             self._configured_path(raw_path),
             roots=self.local_file_access_roots,
-            field="effect audio path",
+            field="effect asset path",
         )
 
     def _managed_file(self, effect_name: str, raw_path: str) -> Path | None:
@@ -557,7 +566,7 @@ class EffectUseCase:
             return safe_existing_file_path(
                 candidate,
                 roots=[root],
-                field="effect audio path",
+                field="effect asset path",
             )
         except (OSError, ValueError, FileNotFoundError):
             return None
@@ -593,7 +602,7 @@ class EffectUseCase:
             counter += 1
         return candidate
 
-    def _renamed_audio_paths(
+    def _renamed_asset_paths(
         self,
         raw_paths: Any,
         old_dir: Path,
@@ -652,14 +661,6 @@ def validate_effect_storage_name(name: Any) -> str:
     if value in {".", ".."} or any(part in {".", ".."} for part in path.parts):
         raise ValueError("effect name must not contain relative path segments")
     return value
-
-
-def _tag_text(line: str) -> str:
-    if "：" in line:
-        return line.split("：", 1)[-1].strip()
-    if ":" in line:
-        return line.split(":", 1)[-1].strip()
-    return line.strip()
 
 
 def _safe_extract(package: zipfile.ZipFile, target_dir: Path) -> None:

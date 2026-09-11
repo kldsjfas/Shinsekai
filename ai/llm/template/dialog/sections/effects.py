@@ -1,27 +1,30 @@
 """Selected audio and image effect catalogs for dialogue."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ai.llm.template.core.section import Section
-from ai.llm.template.dialog.context import EffectCatalogContext
+
+if TYPE_CHECKING:
+    from ai.llm.template.dialog.context import DialogTemplateContext
+    from ai.llm.template.prompts.system import RuntimePromptContext
 
 
 @dataclass(frozen=True)
-class EffectCatalogSection(Section[EffectCatalogContext]):
+class EffectCatalogSection(Section["DialogTemplateContext | RuntimePromptContext"]):
     id: str = "effects"
 
-    def _render_self(self, context: EffectCatalogContext) -> str:
-        if not context.effects:
+    def _render_self(self, context: DialogTemplateContext | RuntimePromptContext) -> str:
+        catalog = context.effect_catalog
+        if catalog is None or not catalog.effects:
             return ""
-        if context.translate is None:
+        if catalog.translate is None:
             raise ValueError("effect catalog requires a translator")
-        translate = context.translate
+        translate = catalog.translate
         lines = [translate("effects_header").strip()]
-        for entry in context.effects:
-            if entry.has_image:
-                kind = "image_audio" if entry.has_audio else "image"
-            else:
-                kind = "audio"
-            modes = "before, after" if entry.has_image else "before, after, loop, stop"
-            lines.append(f"- {entry.label} [{translate(f'effect_type_{kind}')}; {modes}]")
+        for entry in catalog.effects:
+            kind = translate(f"effect_type_{entry.kind}")
+            lines.append(f"- {entry.label} [{kind}; {', '.join(entry.modes)}]")
         return "\n" + "\n".join(lines)

@@ -975,7 +975,10 @@ export interface ChatSnapshot {
   dialogText: string;
   /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */
   eventSeq?: number;
+  /** Server wall-clock time when this snapshot was prepared for delivery. */
+  serverTimeMs?: number;
   effectImage?: {
+    durationMs: number;
     expiresAt: number;
     label: string;
     seq: number;

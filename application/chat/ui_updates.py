@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
+from core.media.effect_bindings import effect_modes
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
 from application.chat.history_state import serialize_chat_history_entries
@@ -641,7 +642,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             logger.warning("chat.effect.unresolved effect=%r keyword=%r", effect, keyword)
             return False
         if mode == "loop":
-            if image_path:
+            if mode not in effect_modes(has_image=bool(image_path)):
                 return False
             self.start_loop_effect(keyword, audio_path)
             emitted = keyword in self._looping_effects

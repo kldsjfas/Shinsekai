@@ -24,6 +24,7 @@ class EventSinkSnapshotTests(unittest.TestCase):
             snapshot["effectImage"],
             {
                 "expiresAt": 9800,
+                "durationMs": 8800,
                 "label": "item",
                 "seq": 3,
                 "url": "/api/media?path=item.png",

@@ -532,6 +532,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             triggered_at = 0
         next_snapshot["effectImage"] = {
             "expiresAt": triggered_at + duration_ms,
+            "durationMs": duration_ms,
             "label": str(event.get("label") or ""),
             "seq": int(event.get("seq") or 0),
             "url": str(event.get("url") or ""),

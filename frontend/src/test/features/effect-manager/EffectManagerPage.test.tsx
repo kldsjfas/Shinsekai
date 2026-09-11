@@ -373,6 +373,32 @@ describe("EffectManagerPage", () => {
     },
   );
 
+  it("preserves blank image tag rows when editing and saving", async () => {
+    mockListEffects.mockResolvedValue([
+      {
+        ...structuredClone(effect),
+        image_list: ["first.png", "second.png", "third.png"],
+        image_tags: "Image 1: first\n\nImage 3: third\n",
+        image_audio_list: [],
+      },
+    ]);
+    renderPage();
+    await screen.findByText("third.png");
+    const first = screen.getByAltText("first").closest(".effect-image-row") as HTMLElement;
+    const second = screen.getByAltText("second.png").closest(".effect-image-row") as HTMLElement;
+    const third = screen.getByAltText("third").closest(".effect-image-row") as HTMLElement;
+    expect(within(second).getByRole("textbox")).toHaveValue("");
+    expect(within(third).getByRole("textbox")).toHaveValue("third");
+    fireEvent.change(within(first).getByRole("textbox"), { target: { value: "edited" } });
+    fireEvent.click(within(first).getByRole("button", { name: "Save image prompts" }));
+    await waitFor(() =>
+      expect(mockSaveEffectImageTags).toHaveBeenCalledWith({
+        name: "Spark",
+        imageTags: "图片 1：edited\n图片 2：\n图片 3：third\n",
+      }),
+    );
+  });
+
   it("attaches one audio file to all selected image effects", async () => {
     mockListEffects.mockResolvedValue([
       {

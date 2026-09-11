@@ -2,16 +2,18 @@
 
 from dataclasses import dataclass
 
+from ai.llm.template.core.context import TemplateContext
 from ai.llm.template.core.section import Section, TextSection
 from ai.llm.template.dialog.context import EffectCatalogContext
 from ai.llm.template.dialog.sections.effects import EffectCatalogSection
 
 
 @dataclass(frozen=True)
-class RuntimePromptContext(EffectCatalogContext):
+class RuntimePromptContext(TemplateContext):
     system_template: str
     user_scenario: str
     json_reminder: str
+    effect_catalog: EffectCatalogContext | None = None
 
 
 def build_runtime_prompt_section() -> Section[RuntimePromptContext]:
