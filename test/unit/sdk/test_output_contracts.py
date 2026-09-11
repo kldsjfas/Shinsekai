@@ -212,12 +212,13 @@ def test_template_generator_only_renders_effect_contract_for_a_valid_catalog(mon
     assert with_catalog.index("<effects_header>") < with_catalog.index("<requirements_header>")
 
 
-def test_effect_requirement_explains_catalog_aliases_and_user_actions() -> None:
+def test_effect_requirement_keeps_core_rules_concise() -> None:
     requirement = tr_in_bundle("template_gen.r_effect", "zh_CN")
 
-    assert "逗号或中文逗号分隔的词语是同一资源的可任选别名" in requirement
-    assert "用户最新输入中的实际动作" in requirement
-    assert "两个相邻 dialog 对象" in requirement
+    assert "同行逗号分隔项为别名" in requirement
+    assert "用户动作使图片" in requirement
+    assert "相邻 dialog" in requirement
+    assert len(requirement) < 200
 
 
 def test_template_generator_skips_characters_missing_from_restored_selection(
