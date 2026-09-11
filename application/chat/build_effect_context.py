@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
 from core.media.effect_audio import parse_effect_audio_bindings
+from core.media.effect_image import ImageEffectAsset
 
 
 @dataclass(frozen=True)
@@ -15,8 +16,7 @@ class SelectedEffectContext:
     selected_names: tuple[str, ...]
     labels: tuple[str, ...]
     keyword_map: dict[str, str]
-    image_keyword_map: dict[str, str] = field(default_factory=dict)
-    image_audio_keyword_map: dict[str, str] = field(default_factory=dict)
+    image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
 
 
 class EffectConfigReader(Protocol):
@@ -53,8 +53,7 @@ def build_effect_context(
     labels: list[str] = []
     seen_labels: set[str] = set()
     keyword_map: dict[str, str] = {}
-    image_keyword_map: dict[str, str] = {}
-    image_audio_keyword_map: dict[str, str] = {}
+    image_keyword_map: dict[str, ImageEffectAsset] = {}
     effects = config_reader.list_effects()
 
     for effect in effects:
@@ -68,40 +67,39 @@ def build_effect_context(
             getattr(effect, "audio_list", []) or [],
         )
         for binding in bindings:
-            keyword_map[binding.keyword] = binding.audio_path
+            keyword_map[binding.keyword.casefold()] = binding.audio_path
             label = binding.source_label or binding.keyword
-            keyword_map[label] = binding.audio_path
+            keyword_map[label.casefold()] = binding.audio_path
             label_key = label.casefold()
             if label_key not in seen_labels:
                 seen_labels.add(label_key)
                 labels.append(label)
 
-        image_bindings = parse_effect_audio_bindings(
-            getattr(effect, "image_tags", ""),
-            getattr(effect, "image_list", []) or [],
-        )
-        image_audio_bindings = parse_effect_audio_bindings(
-            getattr(effect, "image_tags", ""),
-            getattr(effect, "image_audio_list", []) or [],
-        )
-        for binding in image_bindings:
-            image_keyword_map[binding.keyword] = binding.audio_path
-            label = binding.source_label or binding.keyword
-            image_keyword_map[label] = binding.audio_path
-            label_key = label.casefold()
-            if label_key not in seen_labels:
-                seen_labels.add(label_key)
-                labels.append(label)
-        for binding in image_audio_bindings:
-            image_audio_keyword_map[binding.keyword] = binding.audio_path
-            image_audio_keyword_map[binding.source_label or binding.keyword] = (
-                binding.audio_path
+        images = getattr(effect, "image_list", []) or []
+        image_audio = getattr(effect, "image_audio_list", []) or []
+        image_tags = str(getattr(effect, "image_tags", "") or "")
+        for index, line in enumerate(image_tags.splitlines()):
+            if index >= len(images):
+                break
+            asset = ImageEffectAsset(
+                image_path=str(images[index] or ""),
+                audio_path=(
+                    str(image_audio[index] or "") if index < len(image_audio) else ""
+                ),
             )
+            for binding in parse_effect_audio_bindings(line, [asset.image_path]):
+                label = binding.source_label or binding.keyword
+                # Later resources win as a whole, including an absent bound audio.
+                image_keyword_map[binding.keyword.casefold()] = asset
+                image_keyword_map[label.casefold()] = asset
+                label_key = label.casefold()
+                if label_key not in seen_labels:
+                    seen_labels.add(label_key)
+                    labels.append(label)
 
     return SelectedEffectContext(
         selected_names=tuple(canonical_names),
         labels=tuple(labels),
         keyword_map=keyword_map,
         image_keyword_map=image_keyword_map,
-        image_audio_keyword_map=image_audio_keyword_map,
     )

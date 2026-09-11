@@ -473,3 +473,29 @@ def test_safe_session_int_and_untranslated_key_detection():
     assert _safe_session_int("bad", default=9) == 9
     assert _has_untranslated_template_keys("template_gen.foo") is True
     assert _has_untranslated_template_keys("normal", None) is False
+
+
+def test_runtime_catalog_projects_types_and_does_not_modify_authored_template(monkeypatch):
+    from application.chat.build_effect_context import SelectedEffectContext
+    from core.media.effect_image import ImageEffectAsset
+
+    monkeypatch.setattr("application.chat.templates.json_format_reminder", lambda: "REMINDER")
+    monkeypatch.setattr("application.chat.templates.translate_effect_prompt", lambda key: key)
+    selected = SelectedEffectContext(
+        selected_names=("Items",), labels=("rain", "letter", "key"),
+        keyword_map={"rain": "rain.wav"},
+        image_keyword_map={
+            "letter": ImageEffectAsset("letter.png"),
+            "key": ImageEffectAsset("key.png", "key.wav"),
+        },
+    )
+    authored = 'Rules {literal}\n- camera: plugin contract'
+    result = _compose_runtime_template(authored, "SCENARIO", selected)
+    assert result == (
+        authored + "\n\neffects_header"
+        "\n- rain [effect_type_audio; before, after, loop, stop]"
+        "\n- letter [effect_type_image; before, after]"
+        "\n- key [effect_type_image_audio; before, after]"
+        "\nSCENARIO\nREMINDER\n"
+    )
+    assert _compose_runtime_template(authored, "SCENARIO") == authored + "\nSCENARIO\nREMINDER\n"

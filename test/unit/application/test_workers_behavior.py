@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 import pytest
 
 
+from core.media.effect_image import ImageEffectAsset
+
 from application.runtime.context import AppRuntime, get_app_runtime, set_app_runtime
 from application.runtime.workers import (
     LLMWorker,
@@ -182,9 +184,9 @@ def test_llm_worker_preserves_model_effect_decisions(effect, user_text) -> None:
 
     runtime = _make_app_runtime(dialog_queue=dialog_queue)
     runtime.effect_image_keyword_map = {
-        "笔记本": "data/effects/custom/item.png",
-        "笔记": "data/effects/custom/item.png",
-        "笔记本，笔记": "data/effects/custom/item.png",
+        "笔记本": ImageEffectAsset("data/effects/custom/item.png"),
+        "笔记": ImageEffectAsset("data/effects/custom/item.png"),
+        "笔记本，笔记": ImageEffectAsset("data/effects/custom/item.png"),
     }
     runtime.config.config.api_config.is_streaming = False
     runtime.llm_manager.chat.return_value = (

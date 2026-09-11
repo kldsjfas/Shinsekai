@@ -25,6 +25,7 @@ from .base import ThreadDagNode
 
 logger = get_logger(__name__)
 
+
 def _busy_preview_reasoning(raw: str, max_len: int = 200) -> str:
     """压成单行摘要供底栏显示（与 ui_message_handler 中 COT 预览一致）。"""
     s = re.sub(r"<[^>]+>", " ", raw or "")
@@ -159,7 +160,6 @@ class LLMWorker(ThreadDagNode):
                 message_count = 0
                 delivered_dialogs: list[LLMDialogMessage] = []
                 raw_chunks: list = []
-
 
                 with tracker.track("LLM stream parse"):
                     for chunk in response_stream:

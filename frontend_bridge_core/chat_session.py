@@ -23,7 +23,6 @@ from application.chat.runtime_process import (
 from application.chat.start_chat import start_chat
 from application.chat.stop_chat import stop_chat
 from application.chat.templates import (
-    _compose_effect_prompt,
     _compose_for_llm,
     _latest_history_json,
     _list_templates,
@@ -267,11 +266,11 @@ def launch_chat(
         body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
     )
     effect_names_str = ",".join(effect_context.selected_names)
-    system_template = _compose_effect_prompt(system_template, effect_context.labels)
     message = _launch_runtime_chat(
         state,
         character_names=characters,
         effect_names=effect_names_str,
+        effect_context=effect_context,
         history_file=history_path.as_posix(),
         init_sprite_path=init_sprite_path,
         room_id=room_id,

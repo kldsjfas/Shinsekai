@@ -4,6 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
+from types import SimpleNamespace
+from core.media.effect_image import ImageEffectAsset
+
 from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
 from application.chat.ui_updates import (
     HeadlessUIUpdateManager,
@@ -206,8 +209,7 @@ def test_streaming_presenter_resolves_image_and_audio_for_the_same_keyword(tmp_p
         (),
         {
             "effect_keyword_map": {"获得钥匙": str(audio)},
-            "effect_image_keyword_map": {"获得钥匙": str(image)},
-            "effect_image_audio_keyword_map": {"获得钥匙": str(bound_audio)},
+            "effect_image_keyword_map": {"获得钥匙": ImageEffectAsset(str(image), str(bound_audio))},
         },
     )()
 
@@ -220,34 +222,33 @@ def test_streaming_presenter_resolves_image_and_audio_for_the_same_keyword(tmp_p
     assert sink.events[-1]["label"] == "获得钥匙"
 
 
-def test_streaming_presenter_tolerantly_matches_the_longest_image_keyword(tmp_path) -> None:
+def test_exact_audio_label_is_not_replaced_by_a_substring_image():
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink)
-    generic_image = tmp_path / "note.png"
-    specific_image = tmp_path / "notebook.png"
-    bound_audio = tmp_path / "notebook.wav"
-    generic_image.write_bytes(b"png")
-    specific_image.write_bytes(b"png")
-    bound_audio.write_bytes(b"wav")
-    runtime = type(
-        "Runtime",
-        (),
-        {
-            "effect_keyword_map": {},
-            "effect_image_keyword_map": {
-                "笔记": str(generic_image),
-                "笔记本": str(specific_image),
-            },
-            "effect_image_audio_keyword_map": {"笔记本": str(bound_audio)},
-        },
-    )()
-
+    runtime = SimpleNamespace(
+        effect_keyword_map={"keyboard": "typing.wav"},
+        effect_image_keyword_map={"key": ImageEffectAsset("key.png", "pickup.wav")},
+    )
     with patch("application.runtime.context.get_app_runtime", return_value=runtime):
-        assert presenter.resolve_effect("获得了“笔记本”", {}, after_dialog=False)
+        assert presenter.resolve_effect("  KEYBOARD  ", {}, after_dialog=False)
+        assert not presenter.resolve_effect("获得了key", {}, after_dialog=False)
+    assert sink.events == [{"type": "effect.play", "url": "media://typing.wav"}]
 
-    assert [event["type"] for event in sink.events] == ["effect.play", "effect.image.show"]
-    assert "notebook.wav" in sink.events[0]["url"]
-    assert "notebook.png" in sink.events[1]["url"]
+
+@pytest.mark.parametrize("timing", ["before", "after"])
+def test_image_and_bound_audio_follow_explicit_timing_once(timing):
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    runtime = SimpleNamespace(effect_image_keyword_map={
+        "key": ImageEffectAsset("key.png", "pickup.wav"),
+    })
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        presenter.resolve_effect(f"{timing}:key", {}, after_dialog=False)
+        assert len(sink.events) == (2 if timing == "before" else 0)
+        presenter.resolve_effect(f"{timing}:key", {}, after_dialog=True)
+        assert len(sink.events) == 2
+        assert not presenter.resolve_effect("loop:key", {}, after_dialog=False)
+        assert len(sink.events) == 2
 
 
 def test_streaming_presenter_keeps_character_slot_across_expression_changes() -> None:

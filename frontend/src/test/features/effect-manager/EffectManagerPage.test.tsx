@@ -336,6 +336,43 @@ describe("EffectManagerPage", () => {
     );
   });
 
+  it.each(["upload", "save tags", "delete", "attach audio"] as const)(
+    "shows an error when image %s fails and preserves the draft",
+    async (operation) => {
+      mockListEffects.mockResolvedValue([
+        {
+          ...structuredClone(effect),
+          image_list: ["D:/effects/key.png"],
+          image_tags: "Image 1: key\n",
+          image_audio_list: [""],
+        },
+      ]);
+      const mutation = {
+        upload: mockUploadEffectImages,
+        "save tags": mockSaveEffectImageTags,
+        delete: mockDeleteEffectImage,
+        "attach audio": mockUploadEffectImageAudio,
+      }[operation];
+      mutation.mockRejectedValueOnce(new Error("Image operation failed"));
+      renderPage();
+      await screen.findByText("key.png");
+      if (operation === "upload" || operation === "attach audio") {
+        const title = operation === "upload" ? "Upload Image" : "Insert audio";
+        fireEvent.click(screen.getByRole("button", { name: title }));
+        fireEvent.click(within(screen.getByRole("dialog", { name: title })).getByText("Choose mocked paths"));
+      } else {
+        const row = screen.getByAltText("key").closest(".effect-image-row") as HTMLElement;
+        fireEvent.click(
+          within(row).getByRole("button", { name: operation === "delete" ? "Delete" : "Save image prompts" }),
+        );
+      }
+      expect(await screen.findByText("Image operation failed")).toBeInTheDocument();
+      expect(mutation).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("key.png")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("key")).toBeInTheDocument();
+    },
+  );
+
   it("attaches one audio file to all selected image effects", async () => {
     mockListEffects.mockResolvedValue([
       {

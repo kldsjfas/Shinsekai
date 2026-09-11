@@ -235,6 +235,13 @@ export function EffectManagerPage() {
   const imageUploadMutation = useMutation({
     mutationFn: (paths: string[]) =>
       uploadEffectImages({ imageTags: draft.image_tags, name: currentEffectName, paths }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+        title: t("effect.asset.uploadImage"),
+      });
+    },
     onSuccess(effect) {
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({
@@ -249,6 +256,13 @@ export function EffectManagerPage() {
 
   const imageTagsSaveMutation = useMutation({
     mutationFn: () => saveEffectImageTags({ imageTags: draft.image_tags, name: currentEffectName }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
     onSuccess(effect) {
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({ ...current, image_tags: effect.image_tags }));
@@ -258,6 +272,13 @@ export function EffectManagerPage() {
 
   const imageDeleteMutation = useMutation({
     mutationFn: (index: number) => deleteEffectImage(currentEffectName, index),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
+        title: t("common.deleteFailed"),
+      });
+    },
     onSuccess(effect) {
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({
@@ -273,6 +294,13 @@ export function EffectManagerPage() {
   const imageAudioUploadMutation = useMutation({
     mutationFn: ({ index, path }: { index: number; path: string }) =>
       uploadEffectImageAudio({ index, name: currentEffectName, path }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+        title: t("effect.asset.insertAudio"),
+      });
+    },
     onSuccess(effect) {
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({ ...current, image_audio_list: effect.image_audio_list }));

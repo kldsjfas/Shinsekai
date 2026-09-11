@@ -2,11 +2,12 @@
 
 from dataclasses import dataclass
 
-from ..core import Section, TemplateContext, TextSection
+from ai.llm.template.core.section import Section, TextSection
+from ai.llm.template.prompts.effects import EffectCatalogSection, EffectPromptContext
 
 
 @dataclass(frozen=True)
-class RuntimePromptContext(TemplateContext):
+class RuntimePromptContext(EffectPromptContext):
     system_template: str
     user_scenario: str
     json_reminder: str
@@ -21,6 +22,7 @@ def build_runtime_prompt_section() -> Section[RuntimePromptContext]:
             TextSection(
                 "system", priority=10, text=lambda context: context.system_template
             ),
+            EffectCatalogSection(priority=15),
             TextSection(
                 "scenario", priority=20, text=lambda context: context.user_scenario
             ),

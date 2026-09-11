@@ -84,15 +84,13 @@ and `(template, warning)` return value are unchanged.
 
 ## System and user prompt assembly
 
-`effects.EffectCatalogSection` owns the selected runtime effect catalog. The
-application action `build_effect_context` only resolves resource names, labels,
-and playback maps. `integrations.effects.append_effect_catalog` supplies the
-locale and composes the catalog with the authored system text using Section
-nodes. The original text is preserved, including whitespace and custom field
-contracts. Empty selections add nothing. New templates contain the effect
-output contract, while the selected labels are appended once at launch; they
-are not also embedded in generated templates. Saved templates are never
-"migrated" by matching translated headings or deleting lines.
+`prompts.effects.EffectCatalogSection` renders the selected runtime catalog as
+one child of `prompts.build_runtime_prompt_section()`, between the authored
+system text and scenario. The application prepares labels and resource types;
+`integrations.effects` supplies localized labels. Catalog entries identify audio,
+images, or images with bound audio, and their supported timing modes. Empty
+selections add nothing. Generated templates contain the output contract; the
+runtime catalog is neither saved into authored templates nor composed twice.
 
 Effect choice belongs to the dialogue model. The worker forwards its `effect`
 field unchanged; resource lookup and presentation execute that choice. It does

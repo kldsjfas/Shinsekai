@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Any, Protocol
 
+from core.media.effect_image import ImageEffectAsset
 from application.chat.startup import (
     ChatStartupContext,
     MissingLlmProviderError,
@@ -93,8 +94,7 @@ class _RuntimeComponents:
     effect_keyword_map: dict[str, str]
     text_processor: Any
     opencc: Any
-    effect_image_keyword_map: dict[str, str] = field(default_factory=dict)
-    effect_image_audio_keyword_map: dict[str, str] = field(default_factory=dict)
+    effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
 
 
 class _ChatInitialization:
@@ -413,9 +413,6 @@ class _BaseChatSession:
             text_processor=TextProcessor(),
             opencc=OpenCC("t2s"),
             effect_image_keyword_map=getattr(effect_context, "image_keyword_map", {}),
-            effect_image_audio_keyword_map=getattr(
-                effect_context, "image_audio_keyword_map", {}
-            ),
         )
         return self.runtime
 
@@ -453,7 +450,6 @@ class _BaseChatSession:
                 bgm_list=runtime.presentation_assets.bgm_paths,
                 effect_keyword_map=runtime.effect_keyword_map,
                 effect_image_keyword_map=runtime.effect_image_keyword_map,
-                effect_image_audio_keyword_map=runtime.effect_image_audio_keyword_map,
                 user_input_queue=runtime.input_queue,
                 dialog_queue=runtime.dialog_queue,
                 presentation_queue=runtime.presentation_queue,

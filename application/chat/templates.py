@@ -8,7 +8,9 @@ from typing import Any
 from config.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
-from ai.llm.template.integrations.effects import append_effect_catalog
+from ai.llm.template.integrations.effects import translate_effect_prompt
+from ai.llm.template.prompts.effects import EffectCatalogEntry
+from application.chat.build_effect_context import SelectedEffectContext
 from ai.llm.template.prompts import (
     RuntimePromptContext,
     UserPromptContext,
@@ -107,16 +109,32 @@ def _effective_user_scenario(user_scenario: str) -> str:
     return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
 
 
-def _compose_effect_prompt(system_template: str, labels: tuple[str, ...]) -> str:
-    """Add current session resources while preserving the authored template."""
-    return append_effect_catalog(system_template, labels)
-
-
-def _compose_runtime_template(system_template: str, user_scenario: str) -> str:
+def _compose_runtime_template(
+    system_template: str,
+    user_scenario: str,
+    effect_context: SelectedEffectContext | None = None,
+) -> str:
+    effects: list[EffectCatalogEntry] = []
+    if effect_context is not None:
+        for label in effect_context.labels:
+            key = label.casefold()
+            image = effect_context.image_keyword_map.get(key)
+            effects.append(
+                EffectCatalogEntry(
+                    label=label,
+                    has_image=image is not None,
+                    has_audio=bool(
+                        (image and image.audio_path)
+                        or effect_context.keyword_map.get(key)
+                    ),
+                )
+            )
     context = RuntimePromptContext(
         system_template=(system_template or "").rstrip(),
         user_scenario=_effective_user_scenario(user_scenario),
         json_reminder=json_format_reminder(),
+        effects=tuple(effects),
+        translate_effect=translate_effect_prompt,
     )
     return build_runtime_prompt_section().render(context) + "\n"
 

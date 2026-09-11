@@ -1,5 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
+from core.media.effect_image import ImageEffectAsset
+
 from application.chat.build_effect_context import build_effect_context
 
 
@@ -25,7 +29,6 @@ def test_selected_effect_context_is_empty_without_a_selection():
     assert context.labels == ()
     assert context.keyword_map == {}
     assert context.image_keyword_map == {}
-    assert context.image_audio_keyword_map == {}
 
 
 def test_selected_effect_context_builds_labels_and_runtime_maps():
@@ -106,12 +109,28 @@ def test_selected_effect_context_includes_image_and_bound_audio():
 
     assert context.labels == ("letter, sealed letter",)
     assert context.image_keyword_map == {
-        "letter": "letter.png",
-        "sealed letter": "letter.png",
-        "letter, sealed letter": "letter.png",
+        label: ImageEffectAsset("letter.png", "paper.wav")
+        for label in ("letter", "sealed letter", "letter, sealed letter")
     }
-    assert context.image_audio_keyword_map == {
-        "letter": "paper.wav",
-        "sealed letter": "paper.wav",
-        "letter, sealed letter": "paper.wav",
-    }
+
+
+@pytest.mark.parametrize("second_audio", [[], [""], ["B.wav"]])
+def test_colliding_image_labels_replace_the_entire_resource(second_audio):
+    context = build_effect_context(_manager(
+        _effect("A", "", [], image_tags="Image 1: Key\n", image_list=["A.png"], image_audio_list=["A.wav"]),
+        _effect("B", "", [], image_tags="Image 1: key\n", image_list=["B.png"], image_audio_list=second_audio),
+    ), ["A", "B"])
+    assert context.image_keyword_map["key"] == ImageEffectAsset("B.png", second_audio[0] if second_audio else "")
+    assert context.labels == ("Key",)
+
+
+def test_image_alias_collision_keeps_audio_aligned_with_its_image_row():
+    context = build_effect_context(_manager(_effect(
+        "Items", "", [],
+        image_tags="Image 1: letter, paper\n\nImage 3: key, paper\n",
+        image_list=["letter.png", "unused.png", "key.png"],
+        image_audio_list=["letter.wav", "unused.wav", ""],
+    )), ["Items"])
+    assert context.image_keyword_map["letter"] == ImageEffectAsset("letter.png", "letter.wav")
+    assert context.image_keyword_map["paper"] == ImageEffectAsset("key.png", "")
+    assert context.image_keyword_map["key, paper"] == ImageEffectAsset("key.png", "")
