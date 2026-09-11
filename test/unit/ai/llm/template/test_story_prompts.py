@@ -1,26 +1,25 @@
 """Golden outputs captured before moving the application's prompt renderers."""
 
 import ast
-from copy import deepcopy
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
+import ai.llm.template.story as story_templates
 from ai.llm.template.core import TemplateContext
 from ai.llm.template.story import (
     AUTHOR_COMPILER_TEMPLATE,
     StoryGuidanceContext,
     StoryGuidanceTransition,
     StoryRequestContext,
-    build_story_guidance_section,
-    build_story_author_system_section,
-    build_story_author_user_section,
     build_story_assessment_system_section,
     build_story_assessment_user_section,
+    build_story_author_system_section,
+    build_story_author_user_section,
+    build_story_guidance_section,
 )
-import ai.llm.template.story as story_templates
-
 
 FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures/story_prompts.json").read_text(encoding="utf-8")

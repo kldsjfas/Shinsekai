@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ..core import TemplateContext
+from ai.llm.template.core.context import TemplateContext
 
 
 @dataclass(frozen=True)
