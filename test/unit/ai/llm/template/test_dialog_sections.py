@@ -9,7 +9,6 @@ from ai.llm.template.dialog import (
     CharacterSection,
     DialogTemplateContext,
     DialogTemplateSection,
-    EffectCatalogSection,
     JsonSchemaSection,
     RequirementsSection,
     build_dialog_section,
@@ -33,8 +32,6 @@ def context():
         target_voice_name="Japanese",
         json_reminder="JSON_REMINDER",
         tools_block="TOOLS",
-        effect_catalog=("impact",),
-        use_effect=True,
         has_real_background=True,
         background=SimpleNamespace(
             sprites=[object()],
@@ -45,14 +42,13 @@ def context():
     )
 
 
-def test_dialog_root_exposes_the_major_section_types(context):
+def test_dialog_root_exposes_the_four_major_section_types(context):
     root = DialogTemplateSection()
 
     assert [type(child) for child in root.children] == [
         JsonSchemaSection,
         CharacterSection,
         BackgroundSection,
-        EffectCatalogSection,
         RequirementsSection,
     ]
     assert isinstance(build_dialog_section(), DialogTemplateSection)
@@ -62,7 +58,6 @@ def test_dialog_root_exposes_the_major_section_types(context):
         "<json_head_top>",
         "<sprites_header>",
         "<scene_block_header>",
-        "<effects_header>",
         "TOOLS",
         "<requirements_header>",
         "<closing>",
@@ -76,10 +71,9 @@ def test_dialog_root_exposes_the_major_section_types(context):
 @pytest.mark.parametrize(
     "section_type,markers",
     [
-        (JsonSchemaSection, ("<json_head_top>",)),
+        (JsonSchemaSection, ("<json_head_top>", "Output field contract")),
         (CharacterSection, ("<sprites_header>", "<profile_header>", "Alice profile")),
         (BackgroundSection, ("<scene_block_header>", "room: 01", "song: 01")),
-        (EffectCatalogSection, ("<effects_header>", "- impact")),
         (
             RequirementsSection,
             ("TOOLS", "<requirements_header>", "<closing>", "JSON_REMINDER"),
@@ -144,7 +138,6 @@ def test_major_sections_expose_their_runtime_composite_children(context):
     assert [child.id for child in requirement_children] == [
         "tools",
         "rules",
-        "custom_fields",
         "closing",
         "json_reminder",
     ]

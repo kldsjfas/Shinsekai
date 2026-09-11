@@ -170,7 +170,7 @@ def test_generate_template_summary_uses_full_primary_profile_and_supporting_brie
     assert "sprite (string, required)" not in summary["system"]
 
 
-def test_generate_template_summary_uses_only_labels_from_selected_effects(monkeypatch):
+def test_generated_template_keeps_effect_rules_independent_of_runtime_selection(monkeypatch):
     character = SimpleNamespace(
         name="Alice",
         sprites=[],
@@ -193,10 +193,6 @@ def test_generate_template_summary_uses_only_labels_from_selected_effects(monkey
     monkeypatch.setattr(
         "ai.llm.template_generator._T",
         lambda key, **_kwargs: f"<{key}>\n",
-    )
-    monkeypatch.setattr(
-        "application.chat.build_effect_context.tr_i18n",
-        lambda _key: "Available labels",
     )
     state = SimpleNamespace(
         config_manager=config_manager,
@@ -224,12 +220,13 @@ def test_generate_template_summary_uses_only_labels_from_selected_effects(monkey
         },
     )
 
-    assert "- rain\n- letter" in selected["system"]
+    assert "- rain\n- letter" not in selected["system"]
+    assert selected["system"] == unselected["system"]
     assert "<json_line_effect>" in selected["system"]
     assert "<r_effect>" in selected["system"]
     assert "<effects_header>" not in unselected["system"]
-    assert "<json_line_effect>" not in unselected["system"]
-    assert "<r_effect>" not in unselected["system"]
+    assert "<json_line_effect>" in unselected["system"]
+    assert "<r_effect>" in unselected["system"]
 
 
 def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):

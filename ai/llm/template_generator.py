@@ -110,7 +110,6 @@ class TemplateGenerator:
         max_dialog_items: int = 0,
         primary_characters: Any = None,
         media_selection_mode: str = "indexed",
-        effect_catalog: list[str] | tuple[str, ...] | None = None,
     ):
         if not selected_characters:
             raise NoValidCharactersError()
@@ -118,9 +117,6 @@ class TemplateGenerator:
         if not characters:
             raise NoValidCharactersError()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
-        resolved_effect_catalog = tuple(
-            str(label).strip() for label in (effect_catalog or ()) if str(label).strip()
-        )
         context = DialogTemplateContext(
             characters=tuple(characters),
             translate=_T,
@@ -143,9 +139,8 @@ class TemplateGenerator:
                 else None
             ),
             has_real_background=has_background,
-            effect_catalog=resolved_effect_catalog,
             output_contract_patches=tuple(self._get_output_contract_patches()),
-            use_effect=bool(use_effect and resolved_effect_catalog),
+            use_effect=use_effect,
             use_cg=use_cg,
             use_llm_translation=bool(use_llm_translation and not _ui_voice_same_lang()),
             use_cot=use_cot,

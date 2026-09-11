@@ -652,7 +652,7 @@ describe("TemplateEditorPage", () => {
     expect(mockShowChatSurface).not.toHaveBeenCalled();
   });
 
-  it("removes migrated and repeated effect hints without injecting a second catalog", async () => {
+  it("preserves authored prompt sections when restoring and selecting effects", async () => {
     mockListTemplates.mockResolvedValue([
       {
         ...template,
@@ -676,21 +676,13 @@ describe("TemplateEditorPage", () => {
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "System template" }));
     const systemTemplate = screen.getByDisplayValue(/System rules/) as HTMLTextAreaElement;
-    await waitFor(() => expect(systemTemplate.value).not.toContain("已选特效提示："));
-    expect(systemTemplate.value).not.toContain("可用音效：");
-    expect(systemTemplate.value).not.toContain("音效触发时机与模式：");
-    expect(systemTemplate.value).not.toContain("Output field contract:");
-    expect(systemTemplate.value).not.toContain("- character_name (");
-    expect(systemTemplate.value).toContain("- camera (string): 插件字段");
-    expect(systemTemplate.value).toContain("可调用工具");
+    const authoredSystem = (await mockListTemplates.mock.results[0].value)[0].system;
+    expect(systemTemplate).toHaveValue(authoredSystem);
 
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
-    await waitFor(() => expect(systemTemplate.value).not.toContain("可用音效："));
-    expect(systemTemplate.value).not.toContain("音效触发时机与模式：");
+    expect(systemTemplate).toHaveValue(authoredSystem);
 
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
-    await waitFor(() => expect(systemTemplate.value).not.toContain("可用音效："));
-    expect(systemTemplate.value).not.toContain("音效触发时机与模式：");
-    expect(systemTemplate.value).toContain("可调用工具");
+    expect(systemTemplate).toHaveValue(authoredSystem);
   });
 });

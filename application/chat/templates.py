@@ -8,7 +8,7 @@ from typing import Any
 from config.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
-from application.chat.build_effect_context import build_effect_context
+from ai.llm.template.integrations.effects import append_effect_catalog
 from ai.llm.template.prompts import (
     RuntimePromptContext,
     UserPromptContext,
@@ -105,6 +105,11 @@ def _compose_for_llm(scenario: str, system: str) -> str:
 
 def _effective_user_scenario(user_scenario: str) -> str:
     return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
+
+
+def _compose_effect_prompt(system_template: str, labels: tuple[str, ...]) -> str:
+    """Add current session resources while preserving the authored template."""
+    return append_effect_catalog(system_template, labels)
 
 
 def _compose_runtime_template(system_template: str, user_scenario: str) -> str:
@@ -328,14 +333,10 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
             for name in primary_characters
             if character_name_key(name) in selected_keys
         ]
-    effect_context = build_effect_context(
-        state.config_manager,
-        payload.get("effectNames"),
-    )
     content, result = state.template_generator.generate_chat_template(
         resolved_names,
         background,
-        bool(payload.get("useEffect", True) and effect_context.labels),
+        bool(payload.get("useEffect", True)),
         bool(payload.get("useCg", False)),
         bool(payload.get("useTranslation", True)),
         bool(payload.get("useCot", False)),
@@ -346,7 +347,6 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         max_dialog_items=max_dialog_items,
         primary_characters=primary_characters,
         media_selection_mode=media_selection_mode,
-        effect_catalog=effect_context.labels,
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -606,14 +606,10 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
     if not isinstance(selected, list) or not selected:
         return raw
     try:
-        effect_context = build_effect_context(
-            state.config_manager,
-            raw.get("effect_names"),
-        )
         content, _result = state.template_generator.generate_chat_template(
             [str(item) for item in selected if str(item)],
             str(raw.get("background") or ""),
-            bool(raw.get("use_effect_yes", True) and effect_context.labels),
+            bool(raw.get("use_effect_yes", True)),
             bool(raw.get("use_cg_yes", False)),
             bool(raw.get("use_tr_yes", True)),
             bool(raw.get("use_cot_yes", False)),
@@ -634,7 +630,6 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
                 == "semantic"
                 else "indexed"
             ),
-            effect_catalog=effect_context.labels,
         )
     except NoValidCharactersError:
         return raw

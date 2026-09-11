@@ -84,6 +84,20 @@ and `(template, warning)` return value are unchanged.
 
 ## System and user prompt assembly
 
+`effects.EffectCatalogSection` owns the selected runtime effect catalog. The
+application action `build_effect_context` only resolves resource names, labels,
+and playback maps. `integrations.effects.append_effect_catalog` supplies the
+locale and composes the catalog with the authored system text using Section
+nodes. The original text is preserved, including whitespace and custom field
+contracts. Empty selections add nothing. New templates contain the effect
+output contract, while the selected labels are appended once at launch; they
+are not also embedded in generated templates. Saved templates are never
+"migrated" by matching translated headings or deleting lines.
+
+Effect choice belongs to the dialogue model. The worker forwards its `effect`
+field unchanged; resource lookup and presentation execute that choice. It does
+not infer image events from language-specific action keywords.
+
 `prompts.build_runtime_prompt_section()` composes system rules, the user scenario,
 then the JSON reminder. `application.chat.templates` retains its existing empty
 scenario fallback and newline policy at the application boundary.

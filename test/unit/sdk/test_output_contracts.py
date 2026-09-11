@@ -171,7 +171,7 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
     assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\n")
 
 
-def test_template_generator_only_renders_effect_contract_for_a_valid_catalog(monkeypatch) -> None:
+def test_template_generator_preserves_effect_toggle_and_field_contract(monkeypatch) -> None:
     character = SimpleNamespace(
         sprites=[object()],
         emotion_tags="happy: 01",
@@ -187,38 +187,36 @@ def test_template_generator_only_renders_effect_contract_for_a_valid_catalog(mon
     )
     generator = TemplateGenerator(output_contract_patches=[])
 
-    without_catalog, _ = generator.generate_chat_template(
+    disabled, _ = generator.generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+    enabled, _ = generator.generate_chat_template(
         selected_characters=["Alice"],
         bg_name=None,
         use_effect=True,
         use_cg=False,
         use_llm_translation=False,
     )
-    with_catalog, _ = generator.generate_chat_template(
-        selected_characters=["Alice"],
-        bg_name=None,
-        use_effect=True,
-        use_cg=False,
-        use_llm_translation=False,
-        effect_catalog=["rain", "letter"],
-    )
 
-    for marker in ("<json_line_effect>", "<effects_header>", "<r_effect>"):
-        assert marker not in without_catalog
-        assert marker in with_catalog
-    assert "- rain\n- letter" in with_catalog
-    assert "Output field contract" not in with_catalog
-    assert with_catalog.index("<sprites_header>") < with_catalog.index("<effects_header>")
-    assert with_catalog.index("<effects_header>") < with_catalog.index("<requirements_header>")
+    for marker in ("<json_line_effect>", "<r_effect>"):
+        assert marker not in disabled
+        assert marker in enabled
+    for template in (disabled, enabled):
+        assert "<effects_header>" not in template
+        assert "Output field contract" in template
 
 
-def test_effect_requirement_keeps_core_rules_concise() -> None:
+def test_effect_requirement_retains_audio_modes_and_image_aliases() -> None:
     requirement = tr_in_bundle("template_gen.r_effect", "zh_CN")
 
     assert "同行逗号分隔项为别名" in requirement
-    assert "用户动作使图片" in requirement
-    assert "相邻 dialog" in requirement
-    assert len(requirement) < 200
+    assert "不用于图片" in requirement
+    for prefix in ("before:", "after:", "loop:", "stop:"):
+        assert prefix in requirement
 
 
 def test_template_generator_skips_characters_missing_from_restored_selection(

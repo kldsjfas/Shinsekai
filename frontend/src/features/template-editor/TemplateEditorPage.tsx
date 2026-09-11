@@ -68,64 +68,6 @@ import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
 
-const effectHintHeaders = ["已选特效提示：", "可用音效：", "音效触发时机与模式："];
-const effectHintBoundaries = [
-  "立绘说明:",
-  "Sprite sheets:",
-  "立ち絵の説明:",
-  "可调用工具",
-  "Callable tools",
-  "呼び出し可能なツール",
-  "要求：",
-  "Requirements:",
-  "要件：",
-];
-
-function findLineMarker(text: string, markers: string[], from = 0) {
-  const positions = markers
-    .map((marker) => {
-      let index = text.indexOf(marker, from);
-      while (index > 0 && text[index - 1] !== "\n") {
-        index = text.indexOf(marker, index + marker.length);
-      }
-      return index;
-    })
-    .filter((index) => index >= 0);
-  return positions.length ? Math.min(...positions) : -1;
-}
-
-function stripLegacyEffectHints(system: string) {
-  let cleaned = system;
-  let start = findLineMarker(cleaned, effectHintHeaders);
-  while (start !== -1) {
-    const end = findLineMarker(cleaned, effectHintBoundaries, start);
-    const before = cleaned.slice(0, start).trimEnd();
-    const after = end === -1 ? "" : cleaned.slice(end).trimStart();
-    cleaned = before && after ? `${before}\n\n${after}` : before || after;
-    start = findLineMarker(cleaned, effectHintHeaders);
-  }
-
-  const lines = cleaned.split("\n");
-  const normalized: string[] = [];
-  const builtInFields = ["- character_name (", "- sprite (", "- speech (", "- effect (", "- translate ("];
-  for (let index = 0; index < lines.length; index += 1) {
-    if (lines[index].trim() !== "Output field contract:") {
-      normalized.push(lines[index]);
-      continue;
-    }
-    while (index + 1 < lines.length && (!lines[index + 1].trim() || lines[index + 1].startsWith("- "))) {
-      index += 1;
-      if (lines[index].trim() && !builtInFields.some((prefix) => lines[index].startsWith(prefix))) {
-        normalized.push(lines[index]);
-      }
-    }
-  }
-  return normalized
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 export function TemplateEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -216,7 +158,6 @@ export function TemplateEditorPage() {
     if (selected && !sessionDraftActive) {
       setSelectedId(selected.id);
       const normalized = normalizeTemplateSummary(structuredClone(selected));
-      normalized.system = stripLegacyEffectHints(normalized.system ?? "");
       setDraft(normalized);
       setMediaSelectionMode(selected.mediaSelectionMode ?? "indexed");
       setNameError("");
@@ -275,7 +216,7 @@ export function TemplateEditorPage() {
         path: matchingTemplate?.path ?? "",
         mediaSelectionMode: restoredMediaSelectionMode,
         scenario: launchSession.scenario,
-        system: stripLegacyEffectHints(launchSession.system),
+        system: launchSession.system,
         updatedAt: matchingTemplate?.updatedAt ?? "",
       }),
     );
@@ -493,7 +434,6 @@ export function TemplateEditorPage() {
       const normalized = normalizeTemplateSummary(template);
       setIsCreating(true);
       setSessionDraftActive(true);
-      normalized.system = stripLegacyEffectHints(normalized.system ?? "");
       setDraft(normalized);
       if (!options?.silent) {
         showToast({ kind: "success", message: template.generationMessage, title: t("template.toast.generated") });

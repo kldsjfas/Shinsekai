@@ -4,7 +4,6 @@ from .context import DialogTemplateContext
 from .sections.background import BackgroundSection
 from .sections.character import CharacterSection
 from .sections.dialog_template import DialogTemplateSection
-from .sections.effect import EffectCatalogSection
 from .sections.json_schema import JsonSchemaSection
 from .sections.requirements import RequirementsSection
 
@@ -19,7 +18,6 @@ __all__ = [
     "CharacterSection",
     "DialogTemplateContext",
     "DialogTemplateSection",
-    "EffectCatalogSection",
     "JsonSchemaSection",
     "RequirementsSection",
     "build_dialog_section",
