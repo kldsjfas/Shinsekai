@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
@@ -87,10 +87,13 @@ const template = {
   updatedAt: "now",
 };
 
+const queryClients = new Set<QueryClient>();
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
+  queryClients.add(client);
 
   const result = render(
     <QueryClientProvider client={client}>
@@ -104,9 +107,15 @@ function renderPage() {
   return { ...result, queryClient: client };
 }
 
+async function clickButton(button: HTMLElement) {
+  await act(async () => {
+    fireEvent.click(button);
+  });
+}
+
 describe("TemplateEditorPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockUseChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mockRefreshRuntimeStatus,
       runtimeLaunchDisabled: false,
@@ -143,6 +152,14 @@ describe("TemplateEditorPage", () => {
     mockSaveTemplateSession.mockImplementation(async (session) => session);
     mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
     mockShowChatSurface.mockResolvedValue(undefined);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      cleanup();
+      for (const client of queryClients) client.clear();
+      queryClients.clear();
+    });
   });
 
   it("saves edited scenario text and generates with selected characters", async () => {
@@ -363,21 +380,23 @@ describe("TemplateEditorPage", () => {
       } as TemplateLaunchSession;
     });
 
-    renderPage();
+    await act(async () => {
+      renderPage();
+    });
 
     expect(await screen.findByDisplayValue("Restored scene")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await clickButton(screen.getByRole("button", { name: "Generate" }));
 
     await waitFor(() =>
       expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ characters: ["Deleted", "Nanami"] })),
     );
-    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    await clickButton(screen.getByRole("button", { name: "System template" }));
     expect(await screen.findByDisplayValue("Generated system")).toBeInTheDocument();
     expect(mockGenerateTemplate).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
     const dialog = screen.getByRole("dialog", { name: "Quick restart" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
 
     await waitFor(() =>
       expect(mockSaveTemplateSession).toHaveBeenCalledWith(
@@ -387,11 +406,13 @@ describe("TemplateEditorPage", () => {
         }),
       ),
     );
-    expect(mockLaunchChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        characters: ["Nanami"],
-        initSpritePath: "D:/sprites/nanami.png",
-      }),
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          characters: ["Nanami"],
+          initSpritePath: "D:/sprites/nanami.png",
+        }),
+      ),
     );
   });
 
@@ -464,11 +485,11 @@ describe("TemplateEditorPage", () => {
     const { queryClient } = renderPage();
 
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("Session Draft"));
-    fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
     expect(mockLaunchChat).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole("dialog", { name: "Quick restart" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
 
     await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
     expect(mockUpdateRuntimeStatusFromSnapshot).toHaveBeenCalledWith(

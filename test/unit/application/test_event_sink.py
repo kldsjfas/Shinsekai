@@ -660,8 +660,22 @@ class StoryEventSinkTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(snapshot["options"], [option])
+        self.assertEqual(snapshot["options"], ["Wait", option])
         self.assertEqual(snapshot["story"]["currentNodeId"], "gate")
+
+    def test_story_progress_does_not_replace_template_media_history_or_stats(self):
+        snapshot = {
+            **make_empty_chat_snapshot(),
+            "backgroundPath": "normal-background.png",
+            "sprites": [{"characterName": "普通角色", "path": "workflow-output.png"}],
+            "historyEntries": [{"role": "assistant", "text": "普通模板对话"}],
+            "options": ["普通选项"], "stats": [{"label": "好感", "value": 10}],
+        }
+        updated = fold_event_into_snapshot(snapshot, {
+            "type": "story.state.replace", "story": {"currentNodeId": "next", "options": []},
+        })
+        for key in ("backgroundPath", "sprites", "historyEntries", "options", "stats"):
+            self.assertEqual(updated[key], snapshot[key])
 
 
 if __name__ == "__main__":

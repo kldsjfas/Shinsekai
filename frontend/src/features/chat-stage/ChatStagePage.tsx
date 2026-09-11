@@ -592,6 +592,7 @@ export function ChatStagePage() {
   const closeSurface = () => {
     return closeChatSurface({
       closeRuntime: closeChatRuntime,
+      webPath: state.story ? "/settings/templates?mode=story&view=library" : undefined,
       navigate,
       snapshot: state,
     });

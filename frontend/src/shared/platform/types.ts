@@ -1272,6 +1272,13 @@ export interface StoryGenerationTask {
   id: string;
   options: Record<string, unknown>;
   repairAttempts: number;
+  recovery?: {
+    state: "resuming" | "working" | "correcting" | "waiting";
+    attempt?: number;
+    message: string;
+    nextRetryAt?: number | null;
+    lastError?: { code: string; message: string };
+  } | null;
   resourceCatalog: Record<string, unknown>;
   status: "cancelled" | "failed" | "queued" | "running" | "succeeded";
   synopsis: string;
@@ -1283,6 +1290,17 @@ export interface StoryGenerationInput {
   options?: Record<string, unknown>;
   resourceCatalog?: Record<string, unknown>;
   synopsis: string;
+}
+
+export interface StoryLibraryEntry {
+  id: string;
+  title: string;
+  storyPath: string;
+  characters: string[];
+  backgrounds: string[];
+  historyPath: string;
+  currentNodeTitle: string;
+  updatedAt: number;
 }
 
 export interface ImageAutoLabelFailure {
@@ -1384,6 +1402,10 @@ export interface ShinsekaiPlatform {
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   story: {
+    list: () => Promise<StoryLibraryEntry[]>;
+    prepareLaunch: (storyPath: string, historyPath?: string) => Promise<ChatLaunchPayload>;
+    getPreview: (id: string) => Promise<import("./storyPreviewTypes").StoryGenerationPreview>;
+    startSession: (storyPath: string) => Promise<ChatSnapshot>;
     cancelGeneration: (id: string) => Promise<StoryGenerationTask>;
     getGeneration: (id: string) => Promise<StoryGenerationTask>;
     regenerateGeneration: (

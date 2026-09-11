@@ -2493,12 +2493,28 @@ describe("ChatStagePage", () => {
     expect(screen.queryByText("聊天会话已结束。")).not.toBeInTheDocument();
   });
 
-  it("closes the chat surface explicitly from the toolbar", async () => {
+  it.each([false, true])("closes the chat surface and returns to its mode (story: %s)", async (storyMode) => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         runtimeMode: "react",
         sessionId: "session-1",
         wsUrl: "ws://127.0.0.1:8788/ws",
+        story: storyMode
+          ? {
+              storyId: "story-1",
+              storyVersion: 1,
+              revision: 1,
+              currentNodeId: "opening",
+              currentNodeTitle: "Opening",
+              currentNodeType: "limited_turn_node",
+              activeCast: [],
+              castRevision: 0,
+              objectives: [],
+              options: [],
+              unlockedNotifications: [],
+              visibleVariables: [],
+            }
+          : undefined,
       }),
     );
 
@@ -2512,6 +2528,7 @@ describe("ChatStagePage", () => {
     expect(options).toEqual(
       expect.objectContaining({
         closeRuntime: expect.any(Function),
+        webPath: storyMode ? "/settings/templates?mode=story&view=library" : undefined,
         navigate: expect.any(Function),
         snapshot: expect.objectContaining({
           runtimeMode: "react",

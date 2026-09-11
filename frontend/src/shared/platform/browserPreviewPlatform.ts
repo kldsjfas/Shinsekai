@@ -1,3 +1,4 @@
+import { createStoryPreviewPlatform } from "./storyPreviewPlatform";
 import {
   sampleChatSnapshot,
   sampleConfig,
@@ -143,42 +144,6 @@ function previewTask<TResult>(
     updatedAt: now,
     ...patch,
   });
-}
-
-function previewStoryGeneration(id: string, status: StoryGenerationTask["status"]): StoryGenerationTask {
-  const now = Date.now();
-  return {
-    artifactHashes: {},
-    assumptions: ["Browser preview uses a compact three-scene mystery."],
-    cancelRequested: status === "cancelled",
-    completedStages: status === "succeeded" ? ["foundation", "characters", "narrative"] : [],
-    cost: { estimatedTokens: 2100, inputChars: 5600, outputChars: 2800, requests: 3 },
-    createdAt: now,
-    currentStage: status === "succeeded" ? "complete" : "foundation",
-    draftPath: status === "succeeded" ? `data/stories/.generation/${id}/draft.json` : "",
-    error: null,
-    id,
-    options: {},
-    repairAttempts: 0,
-    resourceCatalog: {},
-    status,
-    synopsis: "A compact preview story.",
-    updatedAt: now,
-    validation:
-      status === "succeeded"
-        ? {
-            castFailureNodeIds: [],
-            endingCoverage: 1,
-            endingNodeIds: ["truth-ending", "leave-ending"],
-            exploredStates: 12,
-            issues: [],
-            reachableEndingIds: ["truth-ending", "leave-ending"],
-            reachableNodeIds: ["opening", "clue", "truth-ending", "leave-ending"],
-            sourceHash: "preview",
-            valid: true,
-          }
-        : null,
-  };
 }
 
 function previewNormalizePluginKey(value: string | null | undefined) {
@@ -2500,30 +2465,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         updatedAt: Date.now(),
       }),
     },
-    story: {
-      cancelGeneration: async (id) =>
-        delay({
-          ...previewStoryGeneration(id, "cancelled"),
-          cancelRequested: true,
-        }),
-      getGeneration: async (id) => delay(previewStoryGeneration(id, "succeeded")),
-      regenerateGeneration: async (id, _stage, options) => {
-        const result = previewStoryGeneration(id, "succeeded");
-        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
-        return delay(result);
+    story: createStoryPreviewPlatform(
+      () => clone(chat),
+      (snapshot) => {
+        chat = snapshot;
       },
-      resumeGeneration: async (id, options) => {
-        const result = previewStoryGeneration(id, "succeeded");
-        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
-        return delay(result);
-      },
-      startGeneration: async (input, options) => {
-        const id = `story-preview-${Date.now()}`;
-        const result = { ...previewStoryGeneration(id, "succeeded"), synopsis: input.synopsis };
-        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
-        return delay(result, 400);
-      },
-    },
+    ),
     templates: {
       async generate(input) {
         if (input.voiceLanguage) {
