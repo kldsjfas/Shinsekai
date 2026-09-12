@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
@@ -87,10 +87,13 @@ const template = {
   updatedAt: "now",
 };
 
+const queryClients = new Set<QueryClient>();
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
+  queryClients.add(client);
 
   const result = render(
     <QueryClientProvider client={client}>
@@ -104,9 +107,15 @@ function renderPage() {
   return { ...result, queryClient: client };
 }
 
+async function clickButton(button: HTMLElement) {
+  await act(async () => {
+    fireEvent.click(button);
+  });
+}
+
 describe("TemplateEditorPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockUseChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mockRefreshRuntimeStatus,
       runtimeLaunchDisabled: false,
@@ -143,6 +152,14 @@ describe("TemplateEditorPage", () => {
     mockSaveTemplateSession.mockImplementation(async (session) => session);
     mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
     mockShowChatSurface.mockResolvedValue(undefined);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      cleanup();
+      for (const client of queryClients) client.clear();
+      queryClients.clear();
+    });
   });
 
   it("saves edited scenario text and generates with selected characters", async () => {
@@ -363,21 +380,23 @@ describe("TemplateEditorPage", () => {
       } as TemplateLaunchSession;
     });
 
-    renderPage();
+    await act(async () => {
+      renderPage();
+    });
 
     expect(await screen.findByDisplayValue("Restored scene")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await clickButton(screen.getByRole("button", { name: "Generate" }));
 
     await waitFor(() =>
       expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ characters: ["Deleted", "Nanami"] })),
     );
-    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    await clickButton(screen.getByRole("button", { name: "System template" }));
     expect(await screen.findByDisplayValue("Generated system")).toBeInTheDocument();
     expect(mockGenerateTemplate).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
     const dialog = screen.getByRole("dialog", { name: "Quick restart" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
 
     await waitFor(() =>
       expect(mockSaveTemplateSession).toHaveBeenCalledWith(
@@ -387,11 +406,13 @@ describe("TemplateEditorPage", () => {
         }),
       ),
     );
-    expect(mockLaunchChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        characters: ["Nanami"],
-        initSpritePath: "D:/sprites/nanami.png",
-      }),
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          characters: ["Nanami"],
+          initSpritePath: "D:/sprites/nanami.png",
+        }),
+      ),
     );
   });
 
@@ -464,11 +485,11 @@ describe("TemplateEditorPage", () => {
     const { queryClient } = renderPage();
 
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("Session Draft"));
-    fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
     expect(mockLaunchChat).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole("dialog", { name: "Quick restart" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
 
     await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
     expect(mockUpdateRuntimeStatusFromSnapshot).toHaveBeenCalledWith(
@@ -595,11 +616,14 @@ describe("TemplateEditorPage", () => {
     await waitFor(() => expect(mockListTemplates).toHaveBeenCalledTimes(callsBeforeRetry + 1));
   });
 
-  it("injects selected effect hints, persists runtime controls, and handles runtime dependency installs", async () => {
+  it("persists selected effects and handles runtime dependency installs", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     mockListEffects.mockResolvedValue([
       {
         audio_tags: "特效 1：雨声\n特效 2: 雷声",
+        image_list: [],
+        image_tags: "",
+        image_audio_list: [],
         color: "#4455aa",
         name: "Rain",
       },
@@ -616,9 +640,6 @@ describe("TemplateEditorPage", () => {
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
-    fireEvent.click(screen.getByRole("button", { name: "System template" }));
-    await waitFor(() => expect(screen.getByDisplayValue(/可用音效/)).toBeInTheDocument());
-    expect(screen.getByDisplayValue(/Rain有2条特效音频/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "English" }));
     await waitFor(() =>
@@ -650,5 +671,39 @@ describe("TemplateEditorPage", () => {
     );
     expect(mockInstallMissingRuntimeDependency).toHaveBeenCalledWith({ moduleName: "mem0" });
     expect(mockShowChatSurface).not.toHaveBeenCalled();
+  });
+
+  it("preserves authored prompt sections when restoring and selecting effects", async () => {
+    mockListTemplates.mockResolvedValue([
+      {
+        ...template,
+        system:
+          'System rules\n\nOutput field contract:\n- character_name (string): 内置\n- camera (string): 插件字段\n\n立绘说明:\n角色\n\n已选特效提示：\n旧音频和图片\n\n音效触发时机与模式：\n- loop:旧关键词\n循环示例：开始时 {"effect": "loop:雨声"}\n\n音效触发时机与模式：\n- stop:旧关键词\n\n可用音效：\n旧音效\n\n音效触发时机与模式：\n- before:旧关键词\n\n可调用工具\n- search',
+      },
+    ]);
+    mockListEffects.mockResolvedValue([
+      {
+        audio_tags: "特效 1：雨声\n特效 2: 雷声",
+        image_list: [],
+        image_tags: "",
+        image_audio_list: [],
+        color: "#4455aa",
+        name: "Rain",
+      },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    const systemTemplate = screen.getByDisplayValue(/System rules/) as HTMLTextAreaElement;
+    const authoredSystem = (await mockListTemplates.mock.results[0].value)[0].system;
+    expect(systemTemplate).toHaveValue(authoredSystem);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rain" }));
+    expect(systemTemplate).toHaveValue(authoredSystem);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rain" }));
+    expect(systemTemplate).toHaveValue(authoredSystem);
   });
 });

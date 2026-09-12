@@ -34,14 +34,6 @@ function snapshotReplacesOptimisticPresentation(
   if (snapshot.sessionClosedReason || snapshot.options.length > 0) {
     return true;
   }
-  if (
-    snapshot.story &&
-    (snapshot.story.ending ||
-      snapshot.story.revision !== state.story?.revision ||
-      snapshot.story.currentNodeId !== state.story?.currentNodeId)
-  ) {
-    return true;
-  }
   if (authoritativeEventSeq <= optimistic.eventSeq) {
     return false;
   }
@@ -127,7 +119,7 @@ function submitUserMessageState(
 export function chatStageReducer(state: ChatStageState, action: ChatStageAction): ChatStageState {
   switch (action.type) {
     case "event": {
-      const next = applyStageEvent(state, action.event);
+      const next = applyStageEvent(state, action.event, action.receivedAt);
       if (
         next !== state &&
         action.event.type === "asr.final" &&
@@ -151,13 +143,13 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
           ? { ...next, optimisticSubmission: undefined }
           : preserveOptimisticPresentation(state, next);
       }
-      if (["dialog.end", "options.show", "session.closed", "story.state.replace"].includes(action.event.type)) {
+      if (["dialog.end", "options.show", "session.closed"].includes(action.event.type)) {
         return { ...next, optimisticSubmission: undefined };
       }
       return next;
     }
     case "hydrate": {
-      const next = hydrateFromSnapshot(state, action.snapshot);
+      const next = hydrateFromSnapshot(state, action.snapshot, action.receivedAt);
       if (!state.optimisticSubmission || next === state) {
         return next;
       }

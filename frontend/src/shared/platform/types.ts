@@ -44,6 +44,9 @@ export interface Effect {
   prompt_text: string;
   audio_list: string[];
   audio_tags: string;
+  image_list: string[];
+  image_tags: string;
+  image_audio_list: string[];
 }
 
 export interface ApiConfig {
@@ -972,6 +975,15 @@ export interface ChatSnapshot {
   dialogText: string;
   /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */
   eventSeq?: number;
+  /** Server wall-clock time when this snapshot was prepared for delivery. */
+  serverTimeMs?: number;
+  effectImage?: {
+    durationMs: number;
+    expiresAt: number;
+    label: string;
+    seq: number;
+    url: string;
+  } | null;
   experimentalFeatures?: ChatExperimentalFeatures;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
@@ -1152,6 +1164,7 @@ export type ChatStageEvent =
     })
   | (ChatEventBase & { type: "tts.skip"; playbackId?: string })
   | (ChatEventBase & { type: "effect.play"; url: string })
+  | (ChatEventBase & { type: "effect.image.show"; durationMs: number; label: string; url: string })
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })
   | (ChatEventBase & { type: "effect.loop.stop-all" })
@@ -1262,6 +1275,13 @@ export interface StoryGenerationTask {
   id: string;
   options: Record<string, unknown>;
   repairAttempts: number;
+  recovery?: {
+    state: "resuming" | "working" | "correcting" | "waiting";
+    attempt?: number;
+    message: string;
+    nextRetryAt?: number | null;
+    lastError?: { code: string; message: string };
+  } | null;
   resourceCatalog: Record<string, unknown>;
   status: "cancelled" | "failed" | "queued" | "running" | "succeeded";
   synopsis: string;
@@ -1273,6 +1293,17 @@ export interface StoryGenerationInput {
   options?: Record<string, unknown>;
   resourceCatalog?: Record<string, unknown>;
   synopsis: string;
+}
+
+export interface StoryLibraryEntry {
+  id: string;
+  title: string;
+  storyPath: string;
+  characters: string[];
+  backgrounds: string[];
+  historyPath: string;
+  currentNodeTitle: string;
+  updatedAt: number;
 }
 
 export interface ImageAutoLabelFailure {
@@ -1336,12 +1367,16 @@ export interface ShinsekaiPlatform {
     delete: (name: string) => Promise<void>;
     deleteAllAudio: (name: string) => Promise<Effect>;
     deleteAudio: (name: string, index: number) => Promise<Effect>;
+    deleteImage: (name: string, index: number) => Promise<Effect>;
     export: (name: string) => Promise<string>;
     import: (items: File[] | string[]) => Promise<Effect[]>;
     list: () => Promise<Effect[]>;
     save: (effect: Effect, originalName?: string) => Promise<Effect>;
     saveAudioTags: (input: { audioTags: string; name: string }) => Promise<Effect>;
+    saveImageTags: (input: { imageTags: string; name: string }) => Promise<Effect>;
     uploadAudio: (input: { audioTags: string; name: string; paths: string[] }) => Promise<Effect>;
+    uploadImages: (input: { imageTags: string; name: string; paths: string[] }) => Promise<Effect>;
+    uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
     close: () => Promise<ChatSnapshot>;
@@ -1370,6 +1405,10 @@ export interface ShinsekaiPlatform {
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   story: {
+    list: () => Promise<StoryLibraryEntry[]>;
+    prepareLaunch: (storyPath: string, historyPath?: string) => Promise<ChatLaunchPayload>;
+    getPreview: (id: string) => Promise<import("./storyPreviewTypes").StoryGenerationPreview>;
+    startSession: (storyPath: string) => Promise<ChatSnapshot>;
     cancelGeneration: (id: string) => Promise<StoryGenerationTask>;
     getGeneration: (id: string) => Promise<StoryGenerationTask>;
     regenerateGeneration: (

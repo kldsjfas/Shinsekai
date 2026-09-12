@@ -1,3 +1,4 @@
+import { createStoryPreviewPlatform } from "./storyPreviewPlatform";
 import {
   sampleChatSnapshot,
   sampleConfig,
@@ -143,42 +144,6 @@ function previewTask<TResult>(
     updatedAt: now,
     ...patch,
   });
-}
-
-function previewStoryGeneration(id: string, status: StoryGenerationTask["status"]): StoryGenerationTask {
-  const now = Date.now();
-  return {
-    artifactHashes: {},
-    assumptions: ["Browser preview uses a compact three-scene mystery."],
-    cancelRequested: status === "cancelled",
-    completedStages: status === "succeeded" ? ["foundation", "characters", "narrative"] : [],
-    cost: { estimatedTokens: 2100, inputChars: 5600, outputChars: 2800, requests: 3 },
-    createdAt: now,
-    currentStage: status === "succeeded" ? "complete" : "foundation",
-    draftPath: status === "succeeded" ? `data/stories/.generation/${id}/draft.json` : "",
-    error: null,
-    id,
-    options: {},
-    repairAttempts: 0,
-    resourceCatalog: {},
-    status,
-    synopsis: "A compact preview story.",
-    updatedAt: now,
-    validation:
-      status === "succeeded"
-        ? {
-            castFailureNodeIds: [],
-            endingCoverage: 1,
-            endingNodeIds: ["truth-ending", "leave-ending"],
-            exploredStates: 12,
-            issues: [],
-            reachableEndingIds: ["truth-ending", "leave-ending"],
-            reachableNodeIds: ["opening", "clue", "truth-ending", "leave-ending"],
-            sourceHash: "preview",
-            valid: true,
-          }
-        : null,
-  };
 }
 
 function previewNormalizePluginKey(value: string | null | undefined) {
@@ -775,16 +740,26 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (!effect || index < 0 || index >= effect.audio_list.length) {
           throw new Error("特效音频不存在。");
         }
+        const tags = tagContents(effect.audio_tags, effect.audio_list.length, true);
         effect.audio_list = effect.audio_list.filter((_, itemIndex) => itemIndex !== index);
-        effect.audio_tags = effect.audio_tags
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .filter((_, itemIndex) => itemIndex !== index)
-          .map((line, itemIndex) => `特效 ${itemIndex + 1}：${line.split(/\：|:/).slice(1).join("：")}`)
-          .join("\n");
-        if (effect.audio_tags) {
-          effect.audio_tags += "\n";
+        effect.audio_tags = numberedTags(
+          "特效",
+          tags.filter((_, itemIndex) => itemIndex !== index),
+        );
+        return delay(effect);
+      },
+      async deleteImage(name, index) {
+        const effect = config.effect_list.find((item) => item.name === name);
+        if (!effect || index < 0 || index >= effect.image_list.length) {
+          throw new Error("特效图片不存在。");
         }
+        const tags = tagContents(effect.image_tags, effect.image_list.length, true);
+        effect.image_list = effect.image_list.filter((_, itemIndex) => itemIndex !== index);
+        effect.image_audio_list = effect.image_audio_list.filter((_, itemIndex) => itemIndex !== index);
+        effect.image_tags = numberedTags(
+          "图片",
+          tags.filter((_, itemIndex) => itemIndex !== index),
+        );
         return delay(effect);
       },
       export: (name) => delay(`./data/export/${name}.ef`),
@@ -797,6 +772,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             prompt_text: "",
             audio_list: [],
             audio_tags: "",
+            image_list: [],
+            image_tags: "",
+            image_audio_list: [],
           };
         });
         config.effect_list = [...config.effect_list, ...imported];
@@ -827,13 +805,39 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         effect.audio_tags = input.audioTags;
         return delay(effect);
       },
+      async saveImageTags(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) throw new Error("特效方案不存在。");
+        effect.image_tags = input.imageTags;
+        return delay(effect);
+      },
       async uploadAudio(input) {
         const effect = config.effect_list.find((item) => item.name === input.name);
         if (!effect) {
           throw new Error("特效方案不存在。");
         }
+        const tags = tagContents(input.audioTags || effect.audio_tags, effect.audio_list.length, true);
         effect.audio_list = [...effect.audio_list, ...input.paths];
-        effect.audio_tags = `${input.audioTags || ""}${input.paths.map((_, index) => `特效 ${effect.audio_list.length - input.paths.length + index + 1}：`).join("\n")}\n`;
+        effect.audio_tags = numberedTags("特效", [...tags, ...input.paths.map(() => "")]);
+        return delay(effect);
+      },
+      async uploadImages(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) throw new Error("特效方案不存在。");
+        const tags = tagContents(input.imageTags || effect.image_tags, effect.image_list.length, true);
+        effect.image_list = [...effect.image_list, ...input.paths];
+        effect.image_audio_list = [...effect.image_audio_list, ...input.paths.map(() => "")];
+        effect.image_tags = numberedTags("图片", [...tags, ...input.paths.map(() => "")]);
+        return delay(effect);
+      },
+      async uploadImageAudio(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect || input.index < 0 || input.index >= effect.image_list.length) {
+          throw new Error("特效图片不存在。");
+        }
+        effect.image_audio_list = [...effect.image_audio_list];
+        while (effect.image_audio_list.length < effect.image_list.length) effect.image_audio_list.push("");
+        effect.image_audio_list[input.index] = input.path;
         return delay(effect);
       },
     },
@@ -2451,30 +2455,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         updatedAt: Date.now(),
       }),
     },
-    story: {
-      cancelGeneration: async (id) =>
-        delay({
-          ...previewStoryGeneration(id, "cancelled"),
-          cancelRequested: true,
-        }),
-      getGeneration: async (id) => delay(previewStoryGeneration(id, "succeeded")),
-      regenerateGeneration: async (id, _stage, options) => {
-        const result = previewStoryGeneration(id, "succeeded");
-        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
-        return delay(result);
+    story: createStoryPreviewPlatform(
+      () => clone(chat),
+      (snapshot) => {
+        chat = snapshot;
       },
-      resumeGeneration: async (id, options) => {
-        const result = previewStoryGeneration(id, "succeeded");
-        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
-        return delay(result);
-      },
-      startGeneration: async (input, options) => {
-        const id = `story-preview-${Date.now()}`;
-        const result = { ...previewStoryGeneration(id, "succeeded"), synopsis: input.synopsis };
-        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
-        return delay(result, 400);
-      },
-    },
+    ),
     templates: {
       async generate(input) {
         if (input.voiceLanguage) {

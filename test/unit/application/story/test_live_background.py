@@ -9,7 +9,7 @@ from test.unit.application.story.test_chat_integration import _state
 from test.unit.core.story.test_simple_nodes import simple_story_source
 
 
-def test_transition_and_rollback_project_background_without_snapshot_hydration():
+def test_transition_and_rollback_leave_template_background_untouched():
     state = _state(enabled=True)
     source = simple_story_source()
     source["metadata"]["backgrounds"] = ["门口", "大厅"]
@@ -37,14 +37,11 @@ def test_transition_and_rollback_project_background_without_snapshot_hydration()
     publish_story_transition(state, story_snapshot_patch(state))
 
     backgrounds = [e for e in state.chat_stream.published if e["type"] == "background.change"]
-    assert [e["url"] for e in backgrounds] == [
-        "/api/media/media/大厅.png", "/api/media/media/门口.png",
-    ]
-    assert backgrounds[0]["seq"] < backgrounds[1]["seq"]
+    assert backgrounds == []
     assert sum(e["type"] == "story.state.replace" for e in state.chat_stream.published) == 2
 
 
-@pytest.mark.parametrize("patch,expected", [({}, []), ({"backgroundPath": ""}, [""])])
+@pytest.mark.parametrize("patch,expected", [({}, []), ({"backgroundPath": ""}, [])])
 def test_background_event_distinguishes_omission_from_clearing(patch, expected):
     state = _state(enabled=True)
     publish_story_transition(state, patch)

@@ -48,6 +48,7 @@ from application.chat.history_paths import (
     is_unc_history_path,
     resolve_history_path_for_project,
 )
+from application.chat.build_effect_context import SelectedEffectContext
 from application.chat.mobile_access import (
     get_mobile_access_info,
 )
@@ -67,9 +68,6 @@ from application.story.coordinator import (
     publish_story_transition,
     story_snapshot_patch,
 )
-from application.story.session import StoryTurnCancelledError
-from application.story.history_projection import project_story_history
-from config.feature_flags import FeatureFlag
 from core.story import SelectChoice
 from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
@@ -399,6 +397,7 @@ def _launch_chat(
     *,
     character_names: list[str] | None = None,
     effect_names: str = "",
+    effect_context: SelectedEffectContext | None = None,
     history_file: str,
     init_sprite_path: str,
     room_id: str,
@@ -421,7 +420,9 @@ def _launch_chat(
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
         effective_user_scenario = _effective_user_scenario(user_scenario)
-        template = _compose_runtime_template(system_template, effective_user_scenario)
+        template = _compose_runtime_template(
+            system_template, effective_user_scenario, effect_context
+        )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(
@@ -678,9 +679,6 @@ def _history_entries_from_snapshot(snapshot: dict[str, Any] | None) -> list[dict
 
 
 def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
-    story_session = bound_story_session(state)
-    if story_session is not None:
-        return [dict(item) for item in story_session.active_branch.history_entries]
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
     if session_id and chat_stream is not None:
@@ -1410,55 +1408,6 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             submitted_text = str(payload or "").strip()
         if not submitted_text and not attachments:
             raise ValueError("选项不能为空。" if command == "submit-option" else "消息内容不能为空。")
-        story_scene_service = getattr(state, "story_scene_service", None)
-        story_flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
-        if (
-            command == "send-message"
-            and not attachments
-            and story_scene_service is not None
-            and story_flags is not None
-            and story_flags.is_enabled(FeatureFlag.STORY_SYSTEM)
-        ):
-            command_id = str(body.get("cmdId") or uuid.uuid4().hex)
-            try:
-                result = story_scene_service.handle_free_text(
-                    submitted_text,
-                    command_id=command_id,
-                    message_id=f"message:{command_id}",
-                    user_name=_chat_user_display_name_from_snapshot(state),
-                )
-            except StoryTurnCancelledError as error:
-                raise ValueError(str(error)) from error
-            session = bound_story_session(state)
-            if session is not None:
-                project_story_history(session)
-                history_entries = [
-                    dict(item) for item in session.active_branch.history_entries
-                ]
-            else:
-                history_entries = _record_scene_turn_history(
-                    state, submitted_text, result.dialogue
-                )
-            dialogue = result.dialogue[-1]
-            presentation_events = (
-                *tuple(dict(item) for item in result.presentation_events),
-                *_scene_dialog_events(result.dialogue),
-            )
-            patch = {
-                **story_snapshot_patch(state),
-                "characterName": dialogue.character_id,
-                "dialogText": dialogue.text,
-                "dialogHtml": None,
-                "status": "idle",
-                "numericInfo": "idle",
-            }
-            publish_story_transition(
-                state,
-                patch,
-                history_entries=history_entries,
-                presentation_events=presentation_events,
-            )
-            return _chat_snapshot(state, "idle", extra=patch)
         if _chat_turn_options(state)["batchEnabled"]:
             snapshot_patch: dict[str, Any] = {"inputDraft": ""}
             if command == "send-message":

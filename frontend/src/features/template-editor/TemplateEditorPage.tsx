@@ -1,7 +1,9 @@
+import { CharacterPicker } from "./CharacterPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { updateCharacterRoles } from "./characterRoles";
 import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
+import { Play, RotateCw, Save, Sparkles } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../entities/character/repository";
@@ -55,7 +57,6 @@ import {
   buildTemplateSummary,
   composeTemplateContent,
   createTemplateDraft,
-  getCharacterChipStyle,
   normalizeTemplateSummary,
   synchronizeChatLaunchPayloadWithSession,
   synchronizeTemplateLaunchSessionWithSnapshot,
@@ -149,67 +150,6 @@ export function TemplateEditorPage() {
     [characters, selectedCharacterNames],
   );
   const selectedEffectNames = useMemo(() => new Set(selectedEffects), [selectedEffects]);
-
-  const effectHintText = useMemo(() => {
-    if (!selectedEffects.length) return "";
-    const lines: string[] = ["可用音效："];
-    for (const ef of effects) {
-      if (selectedEffectNames.has(ef.name)) {
-        const tags = (ef.audio_tags || "").split("\n").filter(Boolean);
-        const kws: string[] = [];
-        for (const tag of tags) {
-          const kw = tag.replace(/^特效\s*\d+\s*[：:]\s*/, "").trim();
-          if (kw) kws.push(kw);
-        }
-        if (kws.length) {
-          lines.push(`${ef.name}有${kws.length}条特效音频：`);
-          kws.forEach((kw, i) => lines.push(`${i + 1}. ${kw}`));
-        }
-      }
-    }
-    if (lines.length <= 1) return "";
-    lines.push("");
-    lines.push("音效触发时机与模式：");
-    lines.push("- before:关键词 → 对话前播放一次");
-    lines.push("- after:关键词 → 对话后播放一次");
-    lines.push("- loop:关键词 → 开始循环播放（用于持续性音效如雨声、风声）");
-    lines.push("- stop:关键词 → 停止循环播放");
-    lines.push("- 关键词 → 默认对话前播放一次");
-    lines.push('循环示例：开始时 {"effect": "loop:雨声"}，结束时 {"effect": "stop:雨声"}');
-    return lines.join("\n");
-  }, [effects, selectedEffectNames, selectedEffects]);
-
-  // 选特效后自动写入/更新系统提示词（插在背景和可调用工具之间）
-  useEffect(() => {
-    setDraft((current) => {
-      let sys = current.system ?? "";
-      // 先移除旧的音效段落
-      const hintIdx = sys.indexOf("可用音效：");
-      if (hintIdx !== -1) {
-        let endIdx = sys.indexOf("\n\n", hintIdx + 12);
-        if (endIdx === -1) endIdx = sys.indexOf("\n", hintIdx + 12);
-        if (endIdx === -1) endIdx = sys.length;
-        // 向后找连续的空白行
-        while (endIdx < sys.length && sys[endIdx] === "\n") endIdx++;
-        sys = sys.slice(0, hintIdx) + sys.slice(endIdx);
-      }
-      if (!effectHintText) {
-        if (sys === (current.system ?? "")) return current;
-        return { ...current, system: sys };
-      }
-      // 插入到背景段落后、可调用工具前
-      const toolIdx = sys.indexOf("可调用工具");
-      if (toolIdx !== -1) {
-        // 在可调用工具前插入
-        sys = sys.slice(0, toolIdx) + "\n" + effectHintText + "\n\n" + sys.slice(toolIdx);
-      } else {
-        // 找不到可调用工具，追加到末尾
-        sys = sys.trimEnd() + "\n\n" + effectHintText;
-      }
-      if (sys === (current.system ?? "")) return current;
-      return { ...current, system: sys };
-    });
-  }, [effectHintText]);
   const failedQuery = [templatesQuery, sessionQuery, configQuery, charactersQuery, backgroundsQuery, effectsQuery].find(
     (query) => query.isError,
   );
@@ -218,7 +158,8 @@ export function TemplateEditorPage() {
   useEffect(() => {
     if (selected && !sessionDraftActive) {
       setSelectedId(selected.id);
-      setDraft(normalizeTemplateSummary(structuredClone(selected)));
+      const normalized = normalizeTemplateSummary(structuredClone(selected));
+      setDraft(normalized);
       setMediaSelectionMode(selected.mediaSelectionMode ?? "indexed");
       setNameError("");
     }
@@ -494,25 +435,6 @@ export function TemplateEditorPage() {
       const normalized = normalizeTemplateSummary(template);
       setIsCreating(true);
       setSessionDraftActive(true);
-      // 自动生成后重新注入音效信息
-      let sys = normalized.system ?? "";
-      const hintIdx = sys.indexOf("可用音效：");
-      if (hintIdx !== -1) {
-        let endIdx = sys.indexOf("\n\n", hintIdx + 12);
-        if (endIdx === -1) endIdx = sys.indexOf("\n", hintIdx + 12);
-        if (endIdx === -1) endIdx = sys.length;
-        while (endIdx < sys.length && sys[endIdx] === "\n") endIdx++;
-        sys = sys.slice(0, hintIdx) + sys.slice(endIdx);
-      }
-      if (effectHintText) {
-        const toolIdx = sys.indexOf("可调用工具");
-        if (toolIdx !== -1) {
-          sys = sys.slice(0, toolIdx) + "\n" + effectHintText + "\n\n" + sys.slice(toolIdx);
-        } else {
-          sys = sys.trimEnd() + "\n\n" + effectHintText;
-        }
-      }
-      normalized.system = sys;
       setDraft(normalized);
       if (!options?.silent) {
         showToast({ kind: "success", message: template.generationMessage, title: t("template.toast.generated") });
@@ -660,15 +582,9 @@ export function TemplateEditorPage() {
   const updateSelectedCharacters = (next: string[], options?: { preservePromptMode?: boolean }) => {
     setSelectedCharacters(next);
     if (!options?.preservePromptMode) {
-      const addedCharacter = next.some((name) => !selectedCharacters.includes(name));
-      const remainingPrimaryCharacters = primaryCharacters.filter((name) => next.includes(name));
-      const keepCurrentMode =
-        next.length > 4 &&
-        !addedCharacter &&
-        Boolean(characterPromptMode) &&
-        (characterPromptMode === "full" || remainingPrimaryCharacters.length > 0);
-      setCharacterPromptMode(next.length <= 4 ? "full" : keepCurrentMode ? characterPromptMode : undefined);
-      setPrimaryCharacters(next.length <= 4 ? next : remainingPrimaryCharacters);
+      const roles = updateCharacterRoles(selectedCharacters, next, primaryCharacters, characterPromptMode);
+      setCharacterPromptMode(roles.mode);
+      setPrimaryCharacters(roles.primary);
     }
     setInitSpritePath((path) =>
       compatibleInitialSpritePath({
@@ -707,12 +623,6 @@ export function TemplateEditorPage() {
         title: t("template.primaryCharacters.title"),
       });
     }
-  };
-
-  const toggleCharacter = (name: string, checked: boolean) => {
-    updateSelectedCharacters(
-      checked ? [...new Set([...selectedCharacters, name])] : selectedCharacters.filter((item) => item !== name),
-    );
   };
 
   const toggleEffect = (name: string, checked: boolean) => {
@@ -858,39 +768,11 @@ export function TemplateEditorPage() {
         <section className="template-workbench__main">
           <section className="template-panel template-panel--characters">
             <div className="template-character-picker">
-              <div className="template-character-picker__header">
-                <span className="template-panel__label">{t("template.field.characters")}</span>
-                <Button
-                  disabled={!characters.length}
-                  icon={<Users aria-hidden className="button__icon" />}
-                  onClick={() => {
-                    const next = characters.map((character) => character.name);
-                    updateSelectedCharacters(next);
-                  }}
-                  variant="ghost"
-                >
-                  {t("template.action.selectAllCharacters")}
-                </Button>
-              </div>
-              <div aria-label={t("template.field.characters")} className="template-character-grid" role="group">
-                {characters.map((character) => {
-                  const isSelected = selectedCharacterNames.has(character.name);
-                  return (
-                    <button
-                      aria-pressed={isSelected}
-                      className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
-                      key={character.name}
-                      onClick={() => toggleCharacter(character.name, !isSelected)}
-                      style={getCharacterChipStyle(character.color)}
-                      title={character.name}
-                      type="button"
-                    >
-                      <span aria-hidden className="template-character-card__dot" />
-                      <span className="template-character-card__name">{character.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <CharacterPicker
+                characters={characters}
+                selected={selectedCharacters}
+                onChange={updateSelectedCharacters}
+              />
 
               <CharacterRoleStatus
                 mode={characterPromptMode}

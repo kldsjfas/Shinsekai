@@ -8,6 +8,7 @@ import { getCharacterChipStyle } from "./templateFlow";
 import "./PrimaryCharacterDialog.css";
 
 interface PrimaryCharacterDialogProps {
+  error?: string;
   characters: Character[];
   initialPrimaryCharacters?: string[];
   onConfirm: (primaryCharacters: string[]) => void;
@@ -19,6 +20,7 @@ interface PrimaryCharacterDialogProps {
 const EMPTY_PRIMARY_CHARACTER_NAMES: string[] = [];
 
 export function PrimaryCharacterDialog({
+  error,
   characters,
   initialPrimaryCharacters = EMPTY_PRIMARY_CHARACTER_NAMES,
   onConfirm,
@@ -71,6 +73,7 @@ export function PrimaryCharacterDialog({
       open={open}
       title={t("template.primaryCharacters.title")}
     >
+      {error && <p role="alert">{error}</p>}
       <p className="primary-character-dialog__description">
         {t("template.primaryCharacters.description", { count: characters.length })}
       </p>
