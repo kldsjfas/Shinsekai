@@ -183,6 +183,8 @@ export interface ResolvedChatTheme {
   fontFaces: string;
   /** 前端打字机参数。 */
   typewriter: { cps: number; soundUrl?: string };
+  /** Control artwork must load successfully before replacing fallback icons. */
+  controlArtwork?: { send?: string; microphone?: string };
 }
 
 /** 打字机默认速率（字/秒），与原生 TypingLabel 体感对齐。 */
@@ -526,6 +528,9 @@ function resolveThemeAssetUrl(rel: unknown, assetUrl: (rel: string) => string) {
 export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: string) => string): ResolvedChatTheme {
   const tokens = manifest.tokens ?? {};
   const style: ChatStageStyle = {};
+  const controlArtwork: NonNullable<ResolvedChatTheme["controlArtwork"]> = {};
+  style["--chat-send-icon-opacity"] = "1";
+  style["--chat-input-microphone-icon-opacity"] = "1";
 
   if (isSafeCssValue(tokens.global?.themeColor)) {
     style["--chat-theme-color"] = tokens.global.themeColor;
@@ -539,6 +544,9 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
 
   const dialog = tokens.dialog;
   applyVisualBlock(style, "dialog", dialog, assetUrl, true);
+  if (typeof dialog?.padding === "number") {
+    style["--chat-dialog-padding-inline"] = style["--chat-dialog-padding"];
+  }
   if (typeof dialog?.paddingInlinePx === "number") {
     style["--chat-dialog-padding-inline"] = `${clampNumber(dialog.paddingInlinePx, 64, 8, 128)}px`;
   }
@@ -648,13 +656,13 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
 
   const input = tokens.input;
   if (typeof input?.bottomInsetPx === "number") {
-    style["--stage-safe-bottom"] = `${clampNumber(input.bottomInsetPx, 12, 0, 96)}px`;
+    style["--stage-safe-bottom"] = `max(${clampNumber(input.bottomInsetPx, 12, 0, 96)}px, env(safe-area-inset-bottom))`;
   }
   if (input?.microphoneImage) {
     const microphoneImage = resolveThemeAssetUrl(input.microphoneImage, assetUrl);
     if (microphoneImage) {
       style["--chat-input-microphone-image"] = `url("${microphoneImage}")`;
-      style["--chat-input-microphone-icon-opacity"] = "0";
+      controlArtwork.microphone = microphoneImage;
     }
   }
   if (input?.layout === "pill") {
@@ -662,9 +670,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
     style["--stage-input-height"] = "calc(var(--chat-input-button-size) + clamp(14px, 1.8svh, 18px))";
     style["--chat-input-border-color"] = "transparent";
-    if (input.borderRadius === undefined) {
-      style["--chat-input-border-radius"] = "calc(var(--stage-input-height) / 2)";
-    }
+    style["--chat-input-border-radius"] = "calc(var(--stage-input-height) / 2)";
     style["--chat-send-background"] = "transparent";
     style["--chat-send-border-color"] = "transparent";
     style["--chat-send-border-radius"] = "50%";
@@ -755,10 +761,11 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     }
   }
   applyVisualBlock(style, "send", tokens.send, assetUrl);
-  if (tokens.send?.backgroundImage) {
+  const sendImage = resolveThemeAssetUrl(tokens.send?.backgroundImage, assetUrl);
+  if (sendImage) {
     style["--chat-send-button-height"] = "46px";
     style["--chat-send-button-width"] = "112px";
-    style["--chat-send-icon-opacity"] = "0";
+    controlArtwork.send = sendImage;
   }
   applyVisualBlock(style, "name", tokens.name, assetUrl, true);
   if (tokens.name?.background?.includes("gradient")) {
@@ -881,7 +888,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     soundUrl: resolveThemeAssetUrl(tokens.typewriter?.sound, assetUrl) || undefined,
   };
 
-  return { style, fontFaces, typewriter };
+  return { style, fontFaces, typewriter, controlArtwork };
 }
 
 /** 选择 manifest 名称的本地化文本，缺失时回退 id。 */

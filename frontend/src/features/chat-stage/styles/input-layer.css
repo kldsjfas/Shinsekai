@@ -326,10 +326,6 @@
 
 .input-layer__press {
   grid-column: 1;
-  background-image: var(--chat-input-microphone-image, none);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: 38px 38px;
 }
 
 .input-layer__press .icon-button__icon {
@@ -371,10 +367,16 @@
   background-color: color-mix(in srgb, var(--stage-accent) 26%, transparent);
 }
 
-.input-layer .input-layer__asr-button--listening {
+.chat-stage .input-layer .input-layer__asr-button--listening.icon-button,
+.chat-stage .input-layer .input-layer__asr-button--listening.icon-button:hover:not(:disabled) {
   border-color: var(--chat-send-border-color, var(--stage-accent));
   color: var(--chat-send-color, #061016);
-  background-color: var(--chat-send-background);
+  background:
+    var(--chat-input-microphone-image, none) center / 38px 38px no-repeat,
+    var(--chat-send-background);
+}
+
+.input-layer .input-layer__asr-button--listening {
   animation: input-layer-asr-listening 1.8s ease-in-out infinite;
 }
 

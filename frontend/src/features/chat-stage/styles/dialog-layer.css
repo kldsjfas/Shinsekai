@@ -25,7 +25,7 @@
   min-width: 0;
   min-height: var(--chat-dialog-min-height);
   padding: var(--chat-dialog-padding);
-  padding-inline: var(--chat-dialog-padding-inline);
+  padding-inline: var(--chat-dialog-padding-inline, 24px);
   border: var(--chat-dialog-border);
   border-color: var(--chat-dialog-border-color);
   border-radius: var(--chat-dialog-border-radius);
